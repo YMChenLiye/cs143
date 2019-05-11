@@ -38,8 +38,7 @@ static void initialize_constants(void)
     length = idtable.add_string("length");
     Main = idtable.add_string("Main");
     main_meth = idtable.add_string("main");
-    //   _no_class is a symbol that can't be the name of any
-    //   user-defined class.
+    //   _no_class is a symbol that can't be the name of any user-defined class.
     No_class = idtable.add_string("_no_class");
     No_type = idtable.add_string("_no_type");
     Object = idtable.add_string("Object");
@@ -59,6 +58,42 @@ ClassTable::ClassTable(Classes classes) : semant_errors(0), error_stream(cerr)
 {
     /* Fill this in */
     install_basic_classes();
+
+    for (int i = classes->first(); classes->more(i); i = classes->next(i))
+    {
+        class__class* Class = dynamic_cast<class__class*>(classes->nth(i));
+        assert(Class);
+        std::string sClassName = Class->GetClassName();
+        if (m_ClassMap.find(sClassName) != m_ClassMap.end())
+        {
+            // ÒÑ¾­´æÔÚ
+            cerr << "Exsit Same Class Name :" << sClassName << endl;
+            exit(0);
+        }
+        else
+        {
+            m_ClassMap[sClassName] = Class;
+        }
+    }
+}
+
+std::vector<std::string> ClassTable::GetInheritList(class__class* selfClass)
+{
+    std::vector<std::string> vecResult;
+    class__class* currentClass = selfClass;
+    while (currentClass)
+    {
+        vecResult.push_back(currentClass->GetClassName());
+        if (m_ClassMap.find(currentClass->GetParentClassName()) != m_ClassMap.end())
+        {
+            currentClass = m_ClassMap[currentClass->GetParentClassName()];
+        }
+        else
+        {
+            currentClass = nullptr;
+        }
+    }
+    return vecResult;
 }
 
 void ClassTable::install_basic_classes()
@@ -172,6 +207,44 @@ ostream& ClassTable::semant_error()
 {
     semant_errors++;
     return error_stream;
+}
+
+class__class* ClassTable::GetLeastCommonAncestor(class__class* leftClass, class__class* rightClass)
+{
+    const std::vector<std::string> vecLeftInheritList = GetInheritList(leftClass);
+    const std::vector<std::string> vecRightInheritList = GetInheritList(rightClass);
+
+    const auto& vecShort =
+        vecLeftInheritList.size() <= vecRightInheritList.size() ? vecLeftInheritList : vecRightInheritList;
+
+    const auto& vecLong =
+        vecLeftInheritList.size() <= vecRightInheritList.size() ? vecRightInheritList : vecLeftInheritList;
+
+    std::string sAncestor;
+    assert(!vecShort.empty());
+
+    for (size_t i = 0; i < vecShort.size(); ++i)
+    {
+        const std::string& sShort = vecShort[vecShort.size() - 1 - i];
+        const std::string& sLong = vecLong[vecLong.size() - 1 - i];
+        if (sShort == sLong)
+        {
+            sAncestor = sShort;
+        }
+        else
+        {
+            break;
+        }
+    }
+
+    if (m_ClassMap.find(sAncestor) != m_ClassMap.end())
+    {
+        return m_ClassMap[sAncestor];
+    }
+
+    assert(false);
+
+    return nullptr;
 }
 
 /*   This is the entry point to the semantic checker.

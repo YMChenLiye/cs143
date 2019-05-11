@@ -1,8 +1,7 @@
-FROM 32bit/ubuntu:16.04
+FROM i386/ubuntu:16.04
 
-RUN apt-get update && apt-get install -y flex bison build-essential libxaw7-dev wget vim
-
-RUN ln -s /bin/bash /bin/csh
+RUN sed -i s@/archive.ubuntu.com/@/mirrors.aliyun.com/@g /etc/apt/sources.list
+RUN apt-get update && apt-get install -y flex bison build-essential libxaw7-dev wget vim tcsh
 
 COPY student-dist.tar.gz /usr/class/
 

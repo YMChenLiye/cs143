@@ -3,6 +3,9 @@
 
 #include <assert.h>
 #include <iostream>
+#include <map>
+#include <string>
+#include <vector>
 #include "cool-tree.h"
 #include "stringtab.h"
 #include "symtab.h"
@@ -21,17 +24,24 @@ typedef ClassTable* ClassTableP;
 
 class ClassTable
 {
-private:
-    int semant_errors;
-    void install_basic_classes();
-    ostream& error_stream;
-
 public:
     ClassTable(Classes);
     int errors() { return semant_errors; }
     ostream& semant_error();
     ostream& semant_error(Class_ c);
     ostream& semant_error(Symbol filename, tree_node* t);
+
+    class__class* GetLeastCommonAncestor(class__class* leftClass, class__class* rightClass);
+
+private:
+    std::vector<std::string> GetInheritList(class__class* selfClass);
+
+private:
+    int semant_errors;
+    void install_basic_classes();
+    ostream& error_stream;
+
+    std::map<std::string, class__class*> m_ClassMap;
 };
 
 #endif

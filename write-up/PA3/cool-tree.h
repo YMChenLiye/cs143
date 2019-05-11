@@ -10,6 +10,7 @@
 
 #include "tree.h"
 #include "cool-tree.handcode.h"
+#include <string>
 
 // define the class for phylum
 // define simple phylum - Program
@@ -156,6 +157,9 @@ public:
     }
     Class_ copy_Class_();
     void dump(ostream& stream, int n);
+
+    std::string GetClassName() const { return std::string(name->get_string()); }
+    std::string GetParentClassName() const { return std::string(parent->get_string()); }
 
 #ifdef Class__SHARED_EXTRAS
     Class__SHARED_EXTRAS
