@@ -9,17 +9,6 @@
 extern int semant_debug;
 extern char* curr_filename;
 
-//////////////////////////////////////////////////////////////////////
-//
-// Symbols
-//
-// For convenience, a large number of symbols are predefined here.
-// These symbols include the primitive type and method names, as well
-// as fixed names used by the runtime system.
-//
-//////////////////////////////////////////////////////////////////////
-static Symbol arg, arg2, Bool, concat, cool_abort, copy, Int, in_int, in_string, IO, length, Main, main_meth, No_class,
-    No_type, Object, out_int, out_string, prim_slot, self, SELF_TYPE, Str, str_field, substr, type_name, val;
 //
 // Initializing the predefined symbols.
 //
@@ -57,7 +46,8 @@ static void initialize_constants(void)
 ClassTable::ClassTable(Classes classes) : semant_errors(0), error_stream(cerr)
 {
     /* Fill this in */
-    install_basic_classes();
+    Classes basicClasses = install_basic_classes();
+    classes = append_Classes(basicClasses, classes);
 
     for (int i = classes->first(); classes->more(i); i = classes->next(i))
     {
@@ -73,6 +63,7 @@ ClassTable::ClassTable(Classes classes) : semant_errors(0), error_stream(cerr)
         else
         {
             m_ClassMap[sClassName] = Class;
+            cout << "Add Class: " << sClassName << endl;
         }
     }
 }
@@ -84,19 +75,25 @@ std::vector<std::string> ClassTable::GetInheritList(class__class* selfClass)
     while (currentClass)
     {
         vecResult.push_back(currentClass->GetClassName());
-        if (m_ClassMap.find(currentClass->GetParentClassName()) != m_ClassMap.end())
+        const std::string sParentClassName = currentClass->GetParentClassName();
+        if (m_ClassMap.find(sParentClassName) != m_ClassMap.end())
         {
-            currentClass = m_ClassMap[currentClass->GetParentClassName()];
+            currentClass = m_ClassMap[sParentClassName];
         }
         else
         {
+            if (sParentClassName != std::string(No_class->get_string()))
+            {
+                cerr << "Cant't find Class :" << sParentClassName << endl;
+                semant_error(currentClass);
+            }
             currentClass = nullptr;
         }
     }
     return vecResult;
 }
 
-void ClassTable::install_basic_classes()
+Classes ClassTable::install_basic_classes()
 {
     // The tree package uses these globals to annotate the classes built below.
     // curr_lineno  = 0;
@@ -175,6 +172,13 @@ void ClassTable::install_basic_classes()
                                    append_Formals(single_Formals(formal(arg, Int)), single_Formals(formal(arg2, Int))),
                                    Str, no_expr()))),
         filename);
+
+    Classes basicClasses = single_Classes(Object_class);
+    basicClasses = append_Classes(basicClasses, single_Classes(IO_class));
+    basicClasses = append_Classes(basicClasses, single_Classes(Int_class));
+    basicClasses = append_Classes(basicClasses, single_Classes(Bool_class));
+    basicClasses = append_Classes(basicClasses, single_Classes(Str_class));
+    return basicClasses;
 }
 
 ////////////////////////////////////////////////////////////////////
@@ -247,6 +251,51 @@ class__class* ClassTable::GetLeastCommonAncestor(class__class* leftClass, class_
     return nullptr;
 }
 
+std::map<std::string, std::map<std::string, method_class*>> ClassTable::GetAllMethodTable()
+{
+    std::map<std::string, std::map<std::string, method_class*>> result;
+    for (const auto& classs : m_ClassMap)
+    {
+        std::map<std::string, method_class*> mapMethod;
+        const std::string sClassName = classs.first;
+        class__class* pClass = classs.second;
+        std::vector<method_class*> vecMethod = pClass->GetAllMethod();
+        for (const auto& pMethod : vecMethod)
+        {
+            const std::string sMethodName = pMethod->GetMethodName();
+            if (mapMethod.find(sMethodName) != mapMethod.end())
+            {
+                cerr << "Same Method: " << sMethodName << endl;
+                semant_error(pClass);
+                exit(0);
+            }
+            else
+            {
+                cout << "\tAdd Method: " << sMethodName << endl;
+                mapMethod[sMethodName] = pMethod;
+            }
+        }
+        cout << "Add Class: " << sClassName << "'s Method Done. size = " << mapMethod.size() << endl;
+
+        result[sClassName] = mapMethod;
+    }
+
+    return result;
+}
+
+void ClassTable::PrintInherList()
+{
+    for (const auto& classs : m_ClassMap)
+    {
+        std::vector<std::string> vList = GetInheritList(classs.second);
+        for (const auto& tmp : vList)
+        {
+            cout << tmp << "|";
+        }
+        cout << endl;
+    }
+}
+
 /*   This is the entry point to the semantic checker.
 
      Your checker should do the following two things:
@@ -268,10 +317,55 @@ void program_class::semant()
     ClassTable* classtable = new ClassTable(classes);
 
     /* some semantic analysis code may go here */
+    classtable->PrintInherList();
+
+    TypeCheckEnvironment env;
+    env.MethodIdTable = classtable->GetAllMethodTable();
+
+    // ±éÀúclasses
+    for (int i = classes->first(); classes->more(i); i = classes->next(i))
+    {
+        class__class* Class = dynamic_cast<class__class*>(classes->nth(i));
+        assert(Class);
+        env.CurrentClassName = Class->GetClassName();
+        Class->ClassTypeCheck(env);
+    }
 
     if (classtable->errors())
     {
         cerr << "Compilation halted due to static semantic errors." << endl;
         exit(1);
     }
+}
+
+std::vector<method_class*> class__class::GetAllMethod() const
+{
+    std::vector<method_class*> result;
+    for (int i = features->first(); features->more(i); i = features->next(i))
+    {
+        auto pFeature = features->nth(i);
+
+        method_class* pMethod = dynamic_cast<method_class*>(pFeature);
+        if (pMethod)
+        {
+            result.push_back(pMethod);
+        }
+    }
+    return result;
+}
+
+std::vector<attr_class*> class__class::GetAllAttr() const
+{
+    std::vector<attr_class*> result;
+    for (int i = features->first(); features->more(i); i = features->next(i))
+    {
+        auto pFeature = features->nth(i);
+
+        attr_class* pAttr = dynamic_cast<attr_class*>(pFeature);
+        if (pAttr)
+        {
+            result.push_back(pAttr);
+        }
+    }
+    return result;
 }

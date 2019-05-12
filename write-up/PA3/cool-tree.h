@@ -11,6 +11,7 @@
 #include "tree.h"
 #include "cool-tree.handcode.h"
 #include <string>
+#include <vector>
 
 // define the class for phylum
 // define simple phylum - Program
@@ -161,6 +162,12 @@ public:
     std::string GetClassName() const { return std::string(name->get_string()); }
     std::string GetParentClassName() const { return std::string(parent->get_string()); }
 
+    std::vector<method_class*> GetAllMethod() const;
+
+    std::vector<attr_class*> GetAllAttr() const;
+
+    void ClassTypeCheck(TypeCheckEnvironment& env);
+
 #ifdef Class__SHARED_EXTRAS
     Class__SHARED_EXTRAS
 #endif
@@ -188,6 +195,8 @@ public:
     }
     Feature copy_Feature();
     void dump(ostream& stream, int n);
+
+    std::string GetMethodName() const { return std::string(name->get_string()); }
 
 #ifdef Feature_SHARED_EXTRAS
     Feature_SHARED_EXTRAS
