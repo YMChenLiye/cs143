@@ -209,7 +209,7 @@ public:
 // define constructor - attr
 class attr_class : public Feature_class
 {
-protected:
+public:
     Symbol name;
     Symbol type_decl;
     Expression init;

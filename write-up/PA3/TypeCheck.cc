@@ -15,10 +15,25 @@
 
 void class__class::ClassTypeCheck(TypeCheckEnvironment& env)
 {
+    cout << "Start Check Class: " << name->get_string() << endl;
     env.ObjIdTable.enterscope();
     std::vector<attr_class*> vecAttr = GetAllAttr();
+    for (const auto pAttr : vecAttr)
+    {
+        cout << "Check Attr: " << pAttr->name->get_string() << endl;
+        cout << "Attr Type = " << pAttr->type_decl->get_string() << endl;
+        // void* initType = pAttr->init->ExpTypeCheck(env);
+        Symbol initType = pAttr->init->ExpTypeCheck(env);
+        if (initType != pAttr->type_decl)
+        {
+            cerr << "Type Not Same " << endl;
+        }
+
+        env.ObjIdTable.addid(std::string(pAttr->name->get_string()), pAttr);
+    }
 
     env.ObjIdTable.exitscope();
+    cout << "Finish Check Class: " << name->get_string() << endl;
 }
 
 void attr_class::FeatureTypeCheck(TypeCheckEnvironment& env)
@@ -118,12 +133,15 @@ Symbol comp_class::ExpTypeCheck(TypeCheckEnvironment& env)
 
 Symbol int_const_class::ExpTypeCheck(TypeCheckEnvironment& env)
 {
-    set_type(Int);
-    return Int;
+    Symbol pInt = idtable.lookup_string("Int");
+    set_type(pInt);
+    return get_type();
 }
 
 Symbol bool_const_class::ExpTypeCheck(TypeCheckEnvironment& env)
 {
+    Symbol pBool = idtable.lookup_string("Bool");
+    set_type(pBool);
     return get_type();
 }
 

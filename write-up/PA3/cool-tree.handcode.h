@@ -59,7 +59,7 @@ class attr_class;
 
 struct TypeCheckEnvironment
 {
-    SymbolTable<std::string, Symbol> ObjIdTable;
+    SymbolTable<std::string, attr_class> ObjIdTable;
     std::map<std::string, std::map<std::string, method_class*>> MethodIdTable;
     std::string CurrentClassName;
 };
