@@ -4,9 +4,13 @@
 #include <stdarg.h>
 #include "semant.h"
 #include "utilities.h"
+#include <algorithm>
 
 extern int semant_debug;
 extern char* curr_filename;
+
+using std::vector;
+using std::string;
 
 //////////////////////////////////////////////////////////////////////
 //
@@ -25,7 +29,7 @@ static Symbol arg, arg2, Bool, concat, cool_abort, copy, Int, in_int, in_string,
 //
 static void initialize_constants(void)
 {
-    cout << "initialize_constants" << endl;
+    // cout << "initialize_constants" << endl;
 
     arg = idtable.add_string("arg");
     arg2 = idtable.add_string("arg2");
@@ -76,7 +80,7 @@ ClassTable::ClassTable(Classes classes) : semant_errors(0), error_stream(cerr)
         else
         {
             m_ClassMap[sClassName] = Class;
-            cout << "Add Class: " << sClassName << endl;
+            // cout << "Add Class: " << sClassName << endl;
         }
     }
 }
@@ -264,6 +268,21 @@ class__class* ClassTable::GetLeastCommonAncestor(class__class* leftClass, class_
     return nullptr;
 }
 
+Symbol ClassTable::GetLeastCommonAncestor(Symbol leftType, Symbol rightType)
+{
+    auto iterLeft = m_ClassMap.find(leftType->get_string());
+    auto iterRight = m_ClassMap.find(rightType->get_string());
+    if (iterLeft != m_ClassMap.end() && iterRight != m_ClassMap.end())
+    {
+        class__class* pClass = GetLeastCommonAncestor(iterLeft->second, iterRight->second);
+        if (pClass)
+        {
+            return pClass->name;
+        }
+    }
+    return nullptr;
+}
+
 std::map<std::string, std::map<std::string, method_class*>> ClassTable::GetAllMethodTable()
 {
     std::map<std::string, std::map<std::string, method_class*>> result;
@@ -284,11 +303,11 @@ std::map<std::string, std::map<std::string, method_class*>> ClassTable::GetAllMe
             }
             else
             {
-                cout << "\tAdd Method: " << sMethodName << endl;
+                // cout << "\tAdd Method: " << sMethodName << endl;
                 mapMethod[sMethodName] = pMethod;
             }
         }
-        cout << "Add Class: " << sClassName << "'s Method Done. size = " << mapMethod.size() << endl;
+        // cout << "Add Class: " << sClassName << "'s Method Done. size = " << mapMethod.size() << endl;
 
         result[sClassName] = mapMethod;
     }
@@ -307,6 +326,40 @@ void ClassTable::PrintInherList()
         }
         cout << endl;
     }
+}
+
+bool ClassTable::IsSubType(Symbol childType, Symbol parentType)
+{
+    // assert(childType && parentType);
+    if (!childType || !parentType)
+    {
+        return false;
+    }
+    const string sChildClassName = string(childType->get_string());
+    const string sParentClassName = string(parentType->get_string());
+    if (m_ClassMap.find(sChildClassName) == m_ClassMap.end())
+    {
+        // √ª’“µΩ
+        semant_error();
+        cerr << "Not find Type: " << sChildClassName << endl;
+        exit(-1);
+    }
+    if (m_ClassMap.find(sParentClassName) == m_ClassMap.end())
+    {
+        semant_error();
+        cerr << "Not find Type: " << sParentClassName << endl;
+        exit(-1);
+    }
+
+    vector<string> vecChildInheritList = GetInheritList(m_ClassMap[sChildClassName]);
+    return std::find(std::begin(vecChildInheritList), std::end(vecChildInheritList), sParentClassName) !=
+           std::end(vecChildInheritList);
+}
+
+class__class* ClassTable::GetClassByName(const std::string& sClassName)
+{
+    auto iter = m_ClassMap.find(sClassName);
+    return iter == m_ClassMap.end() ? nullptr : iter->second;
 }
 
 /*   This is the entry point to the semantic checker.
@@ -330,9 +383,10 @@ void program_class::semant()
     ClassTable* classtable = new ClassTable(classes);
 
     /* some semantic analysis code may go here */
-    classtable->PrintInherList();
+    // classtable->PrintInherList();
 
     TypeCheckEnvironment env;
+    env.pClassTable = classtable;
     env.MethodIdTable = classtable->GetAllMethodTable();
 
     // ±È¿˙classes
@@ -340,7 +394,7 @@ void program_class::semant()
     {
         class__class* Class = dynamic_cast<class__class*>(classes->nth(i));
         assert(Class);
-        env.CurrentClassName = Class->GetClassName();
+        env.pCurrentClass = Class;
         Class->ClassTypeCheck(env);
     }
 

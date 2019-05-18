@@ -33,11 +33,17 @@ public:
 
     class__class* GetLeastCommonAncestor(class__class* leftClass, class__class* rightClass);
 
+    Symbol GetLeastCommonAncestor(Symbol leftType, Symbol rightType);
+
     std::map<std::string, std::map<std::string, method_class*>> GetAllMethodTable();
 
     void PrintInherList();
 
-private:
+    // 是否是子类
+    bool IsSubType(Symbol childType, Symbol parentType);
+
+    class__class* GetClassByName(const std::string& sClassName);
+
     std::vector<std::string> GetInheritList(class__class* selfClass);
 
 private:

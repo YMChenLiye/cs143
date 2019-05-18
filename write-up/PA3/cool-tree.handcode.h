@@ -56,12 +56,15 @@ typedef Cases_class* Cases;
 
 class method_class;
 class attr_class;
+class ClassTable;
+class class__class;
 
 struct TypeCheckEnvironment
 {
-    SymbolTable<std::string, attr_class> ObjIdTable;
+    SymbolTable<std::string, Entry> ObjIdTable;
     std::map<std::string, std::map<std::string, method_class*>> MethodIdTable;
-    std::string CurrentClassName;
+    class__class* pCurrentClass;
+    ClassTable* pClassTable;
 };
 
 #define Program_EXTRAS         \
