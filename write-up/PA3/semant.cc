@@ -74,14 +74,38 @@ ClassTable::ClassTable(Classes classes) : semant_errors(0), error_stream(cerr)
         if (m_ClassMap.find(sClassName) != m_ClassMap.end())
         {
             // 已经存在
+            semant_error(Class);
             cerr << "Exsit Same Class Name :" << sClassName << endl;
-            exit(0);
         }
         else
         {
             m_ClassMap[sClassName] = Class;
             // cout << "Add Class: " << sClassName << endl;
         }
+
+        // 不允许继承 Int Bool String
+        if (string(Class->parent->get_string()) == "Int")
+        {
+            semant_error(Class);
+            cerr << "Class: " << sClassName << " cannot inherit class Int." << endl;
+        }
+        else if (string(Class->parent->get_string()) == "Bool")
+        {
+            semant_error(Class);
+            cerr << "Class: " << sClassName << " cannot inherit class Bool." << endl;
+        }
+        else if (string(Class->parent->get_string()) == "String")
+        {
+            semant_error(Class);
+            cerr << "Class: " << sClassName << " cannot inherit class String." << endl;
+        }
+    }
+
+    // 是否定义Main函数
+    if (m_ClassMap.find("Main") == m_ClassMap.end())
+    {
+        semant_error();
+        cerr << "Class Main is not defined." << endl;
     }
 }
 
@@ -101,8 +125,8 @@ std::vector<std::string> ClassTable::GetInheritList(class__class* selfClass)
         {
             if (sParentClassName != std::string(No_class->get_string()))
             {
-                cerr << "Cant't find Class :" << sParentClassName << endl;
                 semant_error(currentClass);
+                cerr << "Cant't find Class :" << sParentClassName << endl;
             }
             currentClass = nullptr;
         }
@@ -297,9 +321,8 @@ std::map<std::string, std::map<std::string, method_class*>> ClassTable::GetAllMe
             const std::string sMethodName = pMethod->GetMethodName();
             if (mapMethod.find(sMethodName) != mapMethod.end())
             {
-                cerr << "Same Method: " << sMethodName << endl;
                 semant_error(pClass);
-                exit(0);
+                cerr << "Same Method: " << sMethodName << endl;
             }
             else
             {
@@ -328,13 +351,29 @@ void ClassTable::PrintInherList()
     }
 }
 
-bool ClassTable::IsSubType(Symbol childType, Symbol parentType)
+bool ClassTable::IsSubType(Symbol childType, Symbol parentType, TypeCheckEnvironment& env)
 {
     // assert(childType && parentType);
     if (!childType || !parentType)
     {
         return false;
     }
+
+    if (childType == parentType)
+    {
+        return true;
+    }
+
+    if (childType == idtable.lookup_string("SELF_TYPE"))
+    {
+        childType = env.pCurrentClass->name;
+    }
+
+    if (parentType == idtable.lookup_string("SELF_TYPE"))
+    {
+        parentType = env.pCurrentClass->name;
+    }
+
     const string sChildClassName = string(childType->get_string());
     const string sParentClassName = string(parentType->get_string());
     if (m_ClassMap.find(sChildClassName) == m_ClassMap.end())
@@ -342,13 +381,11 @@ bool ClassTable::IsSubType(Symbol childType, Symbol parentType)
         // 没找到
         semant_error();
         cerr << "Not find Type: " << sChildClassName << endl;
-        exit(-1);
     }
     if (m_ClassMap.find(sParentClassName) == m_ClassMap.end())
     {
         semant_error();
         cerr << "Not find Type: " << sParentClassName << endl;
-        exit(-1);
     }
 
     vector<string> vecChildInheritList = GetInheritList(m_ClassMap[sChildClassName]);

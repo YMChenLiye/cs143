@@ -40,7 +40,7 @@ public:
     void PrintInherList();
 
     // 是否是子类
-    bool IsSubType(Symbol childType, Symbol parentType);
+    bool IsSubType(Symbol childType, Symbol parentType, TypeCheckEnvironment& env);
 
     class__class* GetClassByName(const std::string& sClassName);
 

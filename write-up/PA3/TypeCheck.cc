@@ -21,6 +21,26 @@ void class__class::ClassTypeCheck(TypeCheckEnvironment& env)
 {
     env.ObjIdTable.enterscope();
 
+    // ºÃ≥–À˘”–∏∏¿‡attr
+    vector<string> vecInheritList = env.pClassTable->GetInheritList(this);
+    for (const auto inherit : vecInheritList)
+    {
+        if (inherit == name->get_string())
+        {
+            continue;
+        }
+
+        class__class* pInheritClass = env.pClassTable->GetClassByName(inherit);
+        assert(pInheritClass);
+        std::vector<attr_class*> vecAttr = pInheritClass->GetAllAttr();
+        for (const auto attr : vecAttr)
+        {
+            env.ObjIdTable.addid(string(attr->name->get_string()), attr->type_decl);
+        }
+    }
+
+    env.ObjIdTable.enterscope();
+
     env.ObjIdTable.addid("self", idtable.lookup_string("SELF_TYPE"));
 
     std::vector<attr_class*> vecAttr = GetAllAttr();
@@ -34,7 +54,7 @@ void class__class::ClassTypeCheck(TypeCheckEnvironment& env)
     {
         pMethod->FeatureTypeCheck(env);
     }
-
+    env.ObjIdTable.exitscope();
     env.ObjIdTable.exitscope();
 }
 
@@ -44,14 +64,15 @@ void attr_class::FeatureTypeCheck(TypeCheckEnvironment& env)
 
     if (initType)
     {
-        if (!env.pClassTable->IsSubType(initType, type_decl))
+        if (!env.pClassTable->IsSubType(initType, type_decl, env))
         {
             env.pClassTable->semant_error(env.pCurrentClass);
             cerr << "Type not match" << endl;
         }
     }
+
     const string sAttrName = std::string(name->get_string());
-    if (env.ObjIdTable.probe(sAttrName))
+    if (env.ObjIdTable.lookup(sAttrName))
     {
         env.pClassTable->semant_error(env.pCurrentClass);
         cerr << "Attr is exist in this scope. : " << sAttrName << endl;
@@ -83,7 +104,7 @@ void method_class::FeatureTypeCheck(TypeCheckEnvironment& env)
 
     Symbol expType = expr->ExpTypeCheck(env);
 
-    if (!env.pClassTable->IsSubType(expType, return_type))
+    if (!env.pClassTable->IsSubType(expType, return_type, env))
     {
         env.pClassTable->semant_error(env.pCurrentClass);
         cerr << "Type Not Match" << endl;
@@ -105,7 +126,7 @@ Symbol assign_class::ExpTypeCheck(TypeCheckEnvironment& env)
     {
         Symbol expType = expr->ExpTypeCheck(env);
 
-        if (!env.pClassTable->IsSubType(expType, objType))
+        if (!env.pClassTable->IsSubType(expType, objType, env))
         {
             env.pClassTable->semant_error(env.pCurrentClass);
             cerr << "Type Not Match" << endl;
@@ -155,7 +176,16 @@ Symbol dispatch_class::ExpTypeCheck(TypeCheckEnvironment& env)
         return nullptr;
     }
 
-    class__class* pExpClass = env.pClassTable->GetClassByName(expType->get_string());
+    class__class* pExpClass = nullptr;
+    if (expType == idtable.lookup_string("SELF_TYPE"))
+    {
+        pExpClass = env.pCurrentClass;
+    }
+    else
+    {
+        pExpClass = env.pClassTable->GetClassByName(expType->get_string());
+    }
+
     assert(pExpClass);
 
     const string sMethondName = name->get_string();
@@ -194,7 +224,7 @@ Symbol dispatch_class::ExpTypeCheck(TypeCheckEnvironment& env)
             {
                 Symbol actType = vecActualType[i];
                 Symbol formalType = vecFormalType[i];
-                if (!env.pClassTable->IsSubType(actType, formalType))
+                if (!env.pClassTable->IsSubType(actType, formalType, env))
                 {
                     env.pClassTable->semant_error(env.pCurrentClass);
                     cerr << "Type not Match" << endl;
@@ -296,13 +326,25 @@ Symbol block_class::ExpTypeCheck(TypeCheckEnvironment& env)
 Symbol let_class::ExpTypeCheck(TypeCheckEnvironment& env)
 {
     Symbol initType = init->ExpTypeCheck(env);
-    if (!env.pClassTable->IsSubType(initType, type_decl))
+    if (initType)
+    {
+        if (!env.pClassTable->IsSubType(initType, type_decl, env))
+        {
+            env.pClassTable->semant_error(env.pCurrentClass);
+            cerr << "Let init Type Error" << endl;
+        }
+    }
+
+    env.ObjIdTable.enterscope();
+    if (string(identifier->get_string()) == "self")
     {
         env.pClassTable->semant_error(env.pCurrentClass);
-        cerr << "Type Error" << endl;
+        cerr << "'self' cannot be bound in a 'let' expression." << endl;
     }
-    env.ObjIdTable.enterscope();
-    env.ObjIdTable.addid(identifier->get_string(), type_decl);
+    else
+    {
+        env.ObjIdTable.addid(identifier->get_string(), type_decl);
+    }
 
     Symbol bodyType = body->ExpTypeCheck(env);
     set_type(bodyType);
@@ -424,6 +466,12 @@ Symbol lt_class::ExpTypeCheck(TypeCheckEnvironment& env)
     return get_type();
 }
 
+bool IsIntBoolString(Symbol type)
+{
+    return type == idtable.lookup_string("Int") || type == idtable.lookup_string("Bool") ||
+           type == idtable.lookup_string("String");
+}
+
 Symbol eq_class::ExpTypeCheck(TypeCheckEnvironment& env)
 {
     Symbol e1Type = e1->ExpTypeCheck(env);
@@ -431,8 +479,11 @@ Symbol eq_class::ExpTypeCheck(TypeCheckEnvironment& env)
 
     if (e1Type != e2Type)
     {
-        env.pClassTable->semant_error(env.pCurrentClass);
-        cerr << "e2 should same as e1" << endl;
+        if (IsIntBoolString(e1Type) && IsIntBoolString(e2Type))
+        {
+            env.pClassTable->semant_error(env.pCurrentClass);
+            cerr << "e2 should same as e1" << endl;
+        }
     }
 
     set_type(idtable.lookup_string("Bool"));
@@ -494,12 +545,13 @@ Symbol string_const_class::ExpTypeCheck(TypeCheckEnvironment& env)
 
 Symbol new__class::ExpTypeCheck(TypeCheckEnvironment& env)
 {
-    const string sClassName = type_name->get_string();
-    class__class* pClass = env.pClassTable->GetClassByName(sClassName);
-    if (pClass)
-    {
-        set_type(pClass->name);
-    }
+    // const string sClassName = type_name->get_string();
+    // class__class* pClass = env.pClassTable->GetClassByName(sClassName);
+    // if (pClass)
+    //{
+    //    set_type(pClass->name);
+    //}
+    set_type(type_name);
     return get_type();
 }
 
@@ -519,9 +571,15 @@ Symbol object_class::ExpTypeCheck(TypeCheckEnvironment& env)
 {
     Symbol pObj = env.ObjIdTable.lookup(name->get_string());
     set_type(pObj);
-    if (pObj == idtable.lookup_string("SELF_TYPE"))
+    // if (pObj == idtable.lookup_string("SELF_TYPE"))
+    //{
+    //    return env.pCurrentClass->name;
+    //}
+
+    if (!pObj)
     {
-        return env.pCurrentClass->name;
+        env.pClassTable->semant_error(env.pCurrentClass);
+        cerr << "Undeclared identifier: " << name->get_string() << endl;
     }
     return get_type();
 }
