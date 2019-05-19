@@ -7,4 +7,4 @@ docker run --rm -it -v $PWD/write-up:/root/workspace/write-up compilers bash -c 
 && cp ../write-up/PA3/* . \
 && sed -i '/CFLAGS=/ s/$/ -std=c++11/' Makefile \
 && sed -i '/CSRC=/ s/$/ TypeCheck.cc/' Makefile \
-&& perl ../grading/pa3-grading.pl && bash"
+&& perl ../grading/pa3-grading.pl"
