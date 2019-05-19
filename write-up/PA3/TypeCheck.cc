@@ -107,7 +107,7 @@ void method_class::FeatureTypeCheck(TypeCheckEnvironment& env)
     if (!env.pClassTable->IsSubType(expType, return_type, env))
     {
         env.pClassTable->semant_error(env.pCurrentClass);
-        cerr << "Type Not Match" << endl;
+        cerr << "method return Type Not Match, MethodName : " << string(name->get_string()) << endl;
     }
 
     env.ObjIdTable.exitscope();
@@ -116,6 +116,12 @@ void method_class::FeatureTypeCheck(TypeCheckEnvironment& env)
 Symbol assign_class::ExpTypeCheck(TypeCheckEnvironment& env)
 {
     const string sObjName = name->get_string();
+    if (sObjName == "self")
+    {
+        env.pClassTable->semant_error(env.pCurrentClass);
+        cerr << "Cannot assign to 'self'" << endl;
+    }
+
     Symbol objType = env.ObjIdTable.lookup(sObjName);
     if (!objType)
     {
@@ -129,7 +135,7 @@ Symbol assign_class::ExpTypeCheck(TypeCheckEnvironment& env)
         if (!env.pClassTable->IsSubType(expType, objType, env))
         {
             env.pClassTable->semant_error(env.pCurrentClass);
-            cerr << "Type Not Match" << endl;
+            cerr << "assign Type Not Match" << endl;
         }
         set_type(objType);
     }
@@ -137,9 +143,47 @@ Symbol assign_class::ExpTypeCheck(TypeCheckEnvironment& env)
     return get_type();
 }
 
-Symbol static_dispatch_class::ExpTypeCheck(TypeCheckEnvironment& env)
+bool CheckMethodActualParameter(const method_class* pMethod, Expressions actual, TypeCheckEnvironment& env)
 {
-    return get_type();
+    vector<Symbol> vecActualType;
+    for (int i = actual->first(); actual->more(i); i = actual->next(i))
+    {
+        Expression exp = actual->nth(i);
+        Symbol expType = exp->ExpTypeCheck(env);
+        vecActualType.push_back(expType);
+    }
+
+    vector<Symbol> vecFormalType;
+    for (int i = pMethod->formals->first(); pMethod->formals->more(i); i = pMethod->formals->next(i))
+    {
+        formal_class* pFormal = dynamic_cast<formal_class*>(pMethod->formals->nth(i));
+        vecFormalType.push_back(pFormal->type_decl);
+    }
+
+    bool success = true;
+
+    if (vecActualType.size() != vecFormalType.size())
+    {
+        env.pClassTable->semant_error(env.pCurrentClass);
+        cerr << "Param Num not Same" << endl;
+        success = false;
+    }
+    else
+    {
+        for (size_t i = 0; i < vecActualType.size(); ++i)
+        {
+            Symbol actType = vecActualType[i];
+            Symbol formalType = vecFormalType[i];
+            if (!env.pClassTable->IsSubType(actType, formalType, env))
+            {
+                env.pClassTable->semant_error(env.pCurrentClass);
+                cerr << "Type not Match" << endl;
+                success = false;
+            }
+        }
+    }
+
+    return success;
 }
 
 // ±éÀú¼Ì³ÐÊ÷,Ñ°ÕÒMethod
@@ -164,6 +208,39 @@ method_class* GetMethodByEnv(TypeCheckEnvironment& env, class__class* pFindClass
         }
     }
     return nullptr;
+}
+
+Symbol static_dispatch_class::ExpTypeCheck(TypeCheckEnvironment& env)
+{
+    Symbol ObjType = expr->ExpTypeCheck(env);
+    if (!env.pClassTable->IsSubType(ObjType, type_name, env))
+    {
+        env.pClassTable->semant_error(env.pCurrentClass);
+        cerr << "StaticDispatch Error" << endl;
+    }
+
+    const string sClassName = type_name->get_string();
+    const string sMethodName = name->get_string();
+
+    method_class* pMethod = GetMethodByEnv(env, env.pClassTable->GetClassByName(sClassName), sMethodName);
+    if (!pMethod)
+    {
+        env.pClassTable->semant_error(env.pCurrentClass);
+        cerr << "StaticDispatch Error, Can't find Method: " << sMethodName << endl;
+    }
+
+    CheckMethodActualParameter(pMethod, actual, env);
+
+    if (pMethod->return_type == idtable.lookup_string("SELF_TYPE"))
+    {
+        set_type(ObjType);
+    }
+    else
+    {
+        set_type(pMethod->return_type);
+    }
+
+    return get_type();
 }
 
 Symbol dispatch_class::ExpTypeCheck(TypeCheckEnvironment& env)
@@ -198,47 +275,15 @@ Symbol dispatch_class::ExpTypeCheck(TypeCheckEnvironment& env)
     }
     else
     {
-        vector<Symbol> vecActualType;
-        for (int i = actual->first(); actual->more(i); i = actual->next(i))
-        {
-            Expression exp = actual->nth(i);
-            Symbol expType = exp->ExpTypeCheck(env);
-            vecActualType.push_back(expType);
-        }
+        CheckMethodActualParameter(pMethod, actual, env);
 
-        vector<Symbol> vecFormalType;
-        for (int i = pMethod->formals->first(); pMethod->formals->more(i); i = pMethod->formals->next(i))
+        if (pMethod->return_type == idtable.lookup_string("SELF_TYPE"))
         {
-            formal_class* pFormal = dynamic_cast<formal_class*>(pMethod->formals->nth(i));
-            vecFormalType.push_back(pFormal->type_decl);
-        }
-
-        if (vecActualType.size() != vecFormalType.size())
-        {
-            env.pClassTable->semant_error(env.pCurrentClass);
-            cerr << "Param Num not Same" << endl;
+            set_type(expType);
         }
         else
         {
-            for (size_t i = 0; i < vecActualType.size(); ++i)
-            {
-                Symbol actType = vecActualType[i];
-                Symbol formalType = vecFormalType[i];
-                if (!env.pClassTable->IsSubType(actType, formalType, env))
-                {
-                    env.pClassTable->semant_error(env.pCurrentClass);
-                    cerr << "Type not Match" << endl;
-                }
-            }
-
-            if (pMethod->return_type == idtable.lookup_string("SELF_TYPE"))
-            {
-                set_type(expType);
-            }
-            else
-            {
-                set_type(pMethod->return_type);
-            }
+            set_type(pMethod->return_type);
         }
     }
 
@@ -255,6 +300,15 @@ Symbol cond_class::ExpTypeCheck(TypeCheckEnvironment& env)
         env.pClassTable->semant_error(env.pCurrentClass);
         cerr << "predType Shoud be bool" << endl;
     }
+
+    if (thenType == idtable.lookup_string("SELF_TYPE"))
+    {
+        thenType = env.pCurrentClass->name;
+    }
+    if (elseType == idtable.lookup_string("SELF_TYPE"))
+    {
+        elseType = env.pCurrentClass->name;
+    }
     Symbol pAncestorType = env.pClassTable->GetLeastCommonAncestor(thenType, elseType);
     set_type(pAncestorType);
     return get_type();
@@ -270,7 +324,7 @@ Symbol loop_class::ExpTypeCheck(TypeCheckEnvironment& env)
         env.pClassTable->semant_error(env.pCurrentClass);
         cerr << "predType Should be Bool" << endl;
     }
-    set_type(bodyType);
+    set_type(idtable.lookup_string("Object"));
     return get_type();
 }
 
@@ -296,7 +350,7 @@ Symbol typcase_class::ExpTypeCheck(TypeCheckEnvironment& env)
         env.ObjIdTable.enterscope();
 
         env.ObjIdTable.addid(pBranch->name->get_string(), pBranch->type_decl);
-        Symbol expType = expr->ExpTypeCheck(env);
+        Symbol expType = pBranch->expr->ExpTypeCheck(env);
         if (!resultType)
         {
             resultType = expType;
@@ -545,12 +599,22 @@ Symbol string_const_class::ExpTypeCheck(TypeCheckEnvironment& env)
 
 Symbol new__class::ExpTypeCheck(TypeCheckEnvironment& env)
 {
-    // const string sClassName = type_name->get_string();
-    // class__class* pClass = env.pClassTable->GetClassByName(sClassName);
-    // if (pClass)
-    //{
-    //    set_type(pClass->name);
-    //}
+    const string sClassName = type_name->get_string();
+    class__class* pClass = nullptr;
+    if (sClassName == "SELF_TYPE")
+    {
+        pClass = env.pCurrentClass;
+    }
+    else
+    {
+        pClass = env.pClassTable->GetClassByName(sClassName);
+    }
+
+    if (!pClass)
+    {
+        env.pClassTable->semant_error(env.pCurrentClass);
+        cerr << "'new' used with undefined class " << sClassName << endl;
+    }
     set_type(type_name);
     return get_type();
 }

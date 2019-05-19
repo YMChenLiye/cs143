@@ -71,6 +71,13 @@ ClassTable::ClassTable(Classes classes) : semant_errors(0), error_stream(cerr)
         class__class* Class = dynamic_cast<class__class*>(classes->nth(i));
         assert(Class);
         std::string sClassName = Class->GetClassName();
+
+        if (sClassName == "SELF_TYPE")
+        {
+            semant_error(Class);
+            cerr << "Redefinition of basic class SELF_TYPE." << endl;
+        }
+
         if (m_ClassMap.find(sClassName) != m_ClassMap.end())
         {
             // 已经存在
@@ -132,6 +139,117 @@ std::vector<std::string> ClassTable::GetInheritList(class__class* selfClass)
         }
     }
     return vecResult;
+}
+
+void ClassTable::CheckOverrideMethod(const std::map<std::string, std::map<std::string, method_class*>> result)
+{
+    for (const auto& classs : result)
+    {
+        const string& sClassName = classs.first;
+        for (const auto& method : classs.second)
+        {
+            const string sMethodName = method.first;
+            const method_class* pMethod = method.second;
+
+            vector<string> vecInheritList = GetInheritList(GetClassByName(sClassName));
+            for (const auto& inherit : vecInheritList)
+            {
+                if (inherit == sClassName)
+                {
+                    continue;
+                }
+                const string& sParentClassName = inherit;
+                auto iterParentClass = result.find(sParentClassName);
+                if (iterParentClass != result.end())
+                {
+                    const std::map<std::string, method_class*> mapParentMethod = iterParentClass->second;
+                    auto iterParentMethod = mapParentMethod.find(sMethodName);
+                    if (iterParentMethod != mapParentMethod.end())
+                    {
+                        const method_class* pParentMethod = iterParentMethod->second;
+                        assert(pParentMethod);
+
+                        // 比较两个method的参数列表
+                        if (!CompareMethodParameter(pMethod, pParentMethod))
+                        {
+                            semant_error(GetClassByName(sClassName));
+                            cerr << "override parameter not same" << endl;
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+bool ClassTable::CompareMethodParameter(const method_class* leftMethod, const method_class* rightMethod)
+{
+    vector<Symbol> vecLeftType;
+    for (int i = leftMethod->formals->first(); leftMethod->formals->more(i); i = leftMethod->formals->next(i))
+    {
+        formal_class* pFormal = dynamic_cast<formal_class*>(leftMethod->formals->nth(i));
+        vecLeftType.push_back(pFormal->type_decl);
+    }
+
+    vector<Symbol> vecRightType;
+    for (int i = rightMethod->formals->first(); rightMethod->formals->more(i); i = rightMethod->formals->next(i))
+    {
+        formal_class* pFormal = dynamic_cast<formal_class*>(rightMethod->formals->nth(i));
+        vecRightType.push_back(pFormal->type_decl);
+    }
+
+    if (vecLeftType.size() != vecRightType.size())
+    {
+        return false;
+    }
+
+    for (size_t i = 0; i < vecLeftType.size(); ++i)
+    {
+        if (vecLeftType[i] != vecRightType[i])
+        {
+            return false;
+        }
+    }
+
+    return true;
+}
+
+void ClassTable::CheckMethodReturnTypeAndParameterType(
+    const std::map<std::string, std::map<std::string, method_class*>> result)
+{
+    for (const auto& classs : result)
+    {
+        const string& sClassName = classs.first;
+        for (const auto& method : classs.second)
+        {
+            const string sMethodName = method.first;
+            const method_class* pMethod = method.second;
+
+            const string& sReturnType = pMethod->return_type->get_string();
+            if (sReturnType != "SELF_TYPE" && m_ClassMap.find(sReturnType) == m_ClassMap.end())
+            {
+                semant_error(GetClassByName(sClassName));
+                cerr << "Undefined return type " << sReturnType << " in method " << sMethodName << endl;
+            }
+
+            for (int i = pMethod->formals->first(); pMethod->formals->more(i); i = pMethod->formals->next(i))
+            {
+                formal_class* pFormal = dynamic_cast<formal_class*>(pMethod->formals->nth(i));
+                const string& sFormalType = pFormal->type_decl->get_string();
+                const string& sFormalName = pFormal->name->get_string();
+                if (sFormalType == "SELF_TYPE")
+                {
+                    semant_error(GetClassByName(sClassName));
+                    cerr << "Formal parameter " << sFormalName << " cannot have type SELF_TYPE." << endl;
+                }
+                if (sFormalName == "self")
+                {
+                    semant_error(GetClassByName(sClassName));
+                    cerr << "'self' cannot be the name of a formal parameter." << endl;
+                }
+            }
+        }
+    }
 }
 
 Classes ClassTable::install_basic_classes()
@@ -304,6 +422,7 @@ Symbol ClassTable::GetLeastCommonAncestor(Symbol leftType, Symbol rightType)
             return pClass->name;
         }
     }
+    // cerr << "LeftType = " << leftType->get_string() << ", RightType = " << rightType->get_string() << endl;
     return nullptr;
 }
 
@@ -335,6 +454,12 @@ std::map<std::string, std::map<std::string, method_class*>> ClassTable::GetAllMe
         result[sClassName] = mapMethod;
     }
 
+    // 所有函数返回值&&参数必须定义过
+    CheckMethodReturnTypeAndParameterType(result);
+
+    // 所有函数override必须参数一致
+    CheckOverrideMethod(result);
+
     return result;
 }
 
@@ -364,14 +489,21 @@ bool ClassTable::IsSubType(Symbol childType, Symbol parentType, TypeCheckEnviron
         return true;
     }
 
+    if (parentType == idtable.lookup_string("SELF_TYPE"))
+    {
+        if (childType == idtable.lookup_string("SELF_TYPE"))
+        {
+            return true;
+        }
+        else
+        {
+            return false;
+        }
+    }
+
     if (childType == idtable.lookup_string("SELF_TYPE"))
     {
         childType = env.pCurrentClass->name;
-    }
-
-    if (parentType == idtable.lookup_string("SELF_TYPE"))
-    {
-        parentType = env.pCurrentClass->name;
     }
 
     const string sChildClassName = string(childType->get_string());

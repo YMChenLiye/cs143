@@ -47,6 +47,14 @@ public:
     std::vector<std::string> GetInheritList(class__class* selfClass);
 
 private:
+    void CheckOverrideMethod(const std::map<std::string, std::map<std::string, method_class*>> result);
+
+    bool CompareMethodParameter(const method_class* leftMethod, const method_class* rightMethod);
+
+    void CheckMethodReturnTypeAndParameterType(
+        const std::map<std::string, std::map<std::string, method_class*>> result);
+
+private:
     int semant_errors;
     Classes install_basic_classes();
     ostream& error_stream;
