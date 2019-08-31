@@ -31,7 +31,7 @@ private:
     int boolclasstag;
 
     int m_iClassTag = 0;
-    int GetNextClassTag() { return ++m_iClassTag; }
+    int GetNextClassTag() { return m_iClassTag++; }
     std::map<std::string, int> m_mapClassTag;
 
     // The following methods emit code for
@@ -45,6 +45,7 @@ private:
 
     // 生成所有类的模板对象
     void code_prototype_objects();
+    void code_class_nameTab();
 
     // The following creates an inheritance graph from
     // a list of classes.  The graph is implemented as

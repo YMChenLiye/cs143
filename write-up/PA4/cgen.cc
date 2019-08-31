@@ -829,6 +829,9 @@ void CgenClassTable::code()
     // 从Object一直递归下去
     code_prototype_objects();
 
+    // 构造classNameTable
+    code_class_nameTab();
+
     auto p = nds->hd();
     str << "nds-hd()->get_name() = " << p->get_name() << endl;
     for (auto iter = nds; iter; iter = iter->tl())
@@ -906,6 +909,27 @@ std::vector<attr_class*> CgenClassTable::get_all_attr(CgenNodeP node)
     std::vector<attr_class*> parentAttr = get_all_attr(node->get_parentnd());
     result.insert(result.begin(), parentAttr.begin(), parentAttr.end());
     return result;
+}
+
+void CgenClassTable::code_class_nameTab()
+{
+    std::map<int, std::string> mapTag2ClassName;
+    for (const auto& iter : m_mapClassTag)
+    {
+        mapTag2ClassName[iter.second] = iter.first;
+    }
+
+    str << CLASSNAMETAB << LABEL;
+
+    for (const auto& iter : mapTag2ClassName)
+    {
+        std::string className = iter.second;
+        StringEntry* entry = stringtable.lookup_string((char*)className.c_str());
+        assert(entry);
+        str << WORD;
+        entry->code_ref(str);
+        str << endl;
+    }
 }
 
 ///////////////////////////////////////////////////////////////////////
