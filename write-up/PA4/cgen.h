@@ -44,8 +44,13 @@ private:
     void code_constants();
 
     // 生成所有类的模板对象
-    void code_prototype_objects();
+    void code_prototype_object(CgenNodeP node);
+
+    // 生成class_nameTab
     void code_class_nameTab();
+
+    // 构造dispatchTables
+    void code_dispatch_tables(CgenNodeP node);
 
     // The following creates an inheritance graph from
     // a list of classes.  The graph is implemented as
@@ -64,8 +69,8 @@ public:
     CgenNodeP root();
 
 private:
-    void code_prototype_object(CgenNodeP node);
     std::vector<attr_class*> get_all_attr(CgenNodeP node);
+    std::vector<std::pair<std::string, method_class*>> get_all_method(CgenNodeP node);
 };
 
 class CgenNode : public class__class

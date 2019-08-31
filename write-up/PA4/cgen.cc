@@ -23,6 +23,7 @@
 //**************************************************************
 
 #include "cgen.h"
+#include <set>
 #include "cgen_gc.h"
 
 extern void emit_string_constant(ostream& str, char* s);
@@ -825,12 +826,14 @@ void CgenClassTable::code()
     //                   - dispatch tables
     //
 
-    // 构造所有类的模板
-    // 从Object一直递归下去
-    code_prototype_objects();
+    // 构造所有类的模板 从Object一直递归下去
+    code_prototype_object(root());
 
     // 构造classNameTable
     code_class_nameTab();
+
+    // 构造dispatchTables
+    code_dispatch_tables(root());
 
     auto p = nds->hd();
     str << "nds-hd()->get_name() = " << p->get_name() << endl;
@@ -852,11 +855,6 @@ void CgenClassTable::code()
 CgenNodeP CgenClassTable::root()
 {
     return probe(Object);
-}
-
-void CgenClassTable::code_prototype_objects()
-{
-    code_prototype_object(root());
 }
 
 void CgenClassTable::code_prototype_object(CgenNodeP node)
@@ -911,6 +909,84 @@ std::vector<attr_class*> CgenClassTable::get_all_attr(CgenNodeP node)
     return result;
 }
 
+std::vector<std::pair<std::string, method_class*>> CgenClassTable::get_all_method(CgenNodeP node)
+{
+    std::vector<std::pair<std::string, method_class*>> result;
+    if (!node)
+    {
+        return result;
+    }
+
+    auto features = node->features;
+    for (int i = features->first(); features->more(i); i = features->next(i))
+    {
+        auto pFeature = features->nth(i);
+
+        method_class* pMethod = dynamic_cast<method_class*>(pFeature);
+        if (pMethod)
+        {
+            result.push_back(std::make_pair(std::string(node->get_name()->get_string()), pMethod));
+        }
+    }
+
+    std::vector<std::pair<std::string, method_class*>> parentMethod = get_all_method(node->get_parentnd());
+
+    std::set<std::string> setParentMethodName;
+    std::set<std::string> setChildMethodName;
+
+    for (const auto& parent : parentMethod)
+    {
+        std::string parentMethodName(parent.second->name->get_string());
+        setParentMethodName.insert(parentMethodName);
+    }
+
+    for (const auto& child : result)
+    {
+        std::string childMethodName(child.second->name->get_string());
+        setChildMethodName.insert(childMethodName);
+    }
+
+    std::vector<std::string> vecOverrideMethodName;
+    for (const auto& parent : setParentMethodName)
+    {
+        for (const auto& child : setChildMethodName)
+        {
+            if (parent == child)
+            {
+                vecOverrideMethodName.push_back(parent);
+            }
+        }
+    }
+
+    for (const auto& overrideMethod : vecOverrideMethodName)
+    {
+        for (auto iter = result.begin(); iter != result.end();)
+        {
+            std::string sName(iter->second->name->get_string());
+            if (sName == overrideMethod)
+            {
+                // 覆盖原先的函数
+                for (size_t i = 0; i < parentMethod.size(); ++i)
+                {
+                    std::string sOldName(parentMethod[i].second->name->get_string());
+                    if (sName == sOldName)
+                    {
+                        parentMethod[i] = *iter;
+                        iter = result.erase(iter);
+                        break;
+                    }
+                }
+                continue;
+            }
+            iter++;
+        }
+    }
+
+    // result 剩下的都是没有重载的
+    parentMethod.insert(parentMethod.end(), result.begin(), result.end());
+    return parentMethod;
+}
+
 void CgenClassTable::code_class_nameTab()
 {
     std::map<int, std::string> mapTag2ClassName;
@@ -929,6 +1005,25 @@ void CgenClassTable::code_class_nameTab()
         str << WORD;
         entry->code_ref(str);
         str << endl;
+    }
+}
+
+void CgenClassTable::code_dispatch_tables(CgenNodeP node)
+{
+    emit_disptable_ref(node->get_name(), str);
+    str << LABEL;
+    // 各种函数
+    std::vector<std::pair<std::string, method_class*>> methods = get_all_method(node);
+    for (const auto& method : methods)
+    {
+        str << WORD;
+        str << method.first << METHOD_SEP << method.second->name << endl;
+    }
+
+    List<CgenNode>* children = node->get_children();
+    for (auto iter = children; iter; iter = iter->tl())
+    {
+        code_dispatch_tables(iter->hd());
     }
 }
 
