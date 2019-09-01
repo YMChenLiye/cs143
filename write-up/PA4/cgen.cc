@@ -334,6 +334,12 @@ static void emit_push(char* reg, ostream& str)
     emit_addiu(SP, SP, -4, str);
 }
 
+static void emit_pop(char* reg, ostream& str)
+{
+    emit_load(reg, 1, SP, str);
+    emit_addiu(SP, SP, 4, str);
+}
+
 //
 // Fetch the integer value in an Int object.
 // Emits code to fetch the integer value of the Integer object pointed
@@ -850,6 +856,9 @@ void CgenClassTable::code()
     //                   - object initializer
     //                   - the class methods
     //                   - etc...
+
+    // 生成Object_Initializer
+    code_object_initializer(root());
 }
 
 CgenNodeP CgenClassTable::root()
@@ -906,6 +915,25 @@ std::vector<attr_class*> CgenClassTable::get_all_attr(CgenNodeP node)
 
     std::vector<attr_class*> parentAttr = get_all_attr(node->get_parentnd());
     result.insert(result.begin(), parentAttr.begin(), parentAttr.end());
+    return result;
+}
+
+std::vector<attr_class*> CgenClassTable::get_self_attr(CgenNodeP node)
+{
+    std::vector<attr_class*> result;
+
+    auto features = node->features;
+    for (int i = features->first(); features->more(i); i = features->next(i))
+    {
+        auto pFeature = features->nth(i);
+
+        attr_class* pAttr = dynamic_cast<attr_class*>(pFeature);
+        if (pAttr)
+        {
+            result.push_back(pAttr);
+        }
+    }
+
     return result;
 }
 
@@ -1027,6 +1055,77 @@ void CgenClassTable::code_dispatch_tables(CgenNodeP node)
     }
 }
 
+void CgenClassTable::code_object_initializer(CgenNodeP node)
+{
+    emit_init_ref(node->name, str);
+    str << LABEL;
+
+    emit_callee_begin();
+
+    // 自身逻辑
+
+    // 保存self
+    emit_move(SELF, ACC, str);
+
+    // 1. 调用父类构造函数
+    if (node->name != Object)
+    {
+        str << JAL;
+        emit_init_ref(node->parent, str);
+        str << endl;
+    }
+
+    // 初始化各个字段
+    std::vector<attr_class*> vecSelfAttr = get_self_attr(node);
+    std::vector<attr_class*> vecAllAttr = get_all_attr(node);
+    size_t uFirstAttrIndex = vecAllAttr.size() - vecSelfAttr.size();
+    for (size_t i = 0; i < vecSelfAttr.size(); ++i)
+    {
+        if (vecSelfAttr[i]->init)
+        {
+            vecSelfAttr[i]->init->code(str);
+            emit_store(ACC, DEFAULT_OBJFIELDS + uFirstAttrIndex + i, SELF, str);
+        }
+    }
+
+    // 恢复self
+    emit_move(ACC, SELF, str);
+
+    emit_callee_end(0);
+
+    List<CgenNode>* children = node->get_children();
+    for (auto iter = children; iter; iter = iter->tl())
+    {
+        code_object_initializer(iter->hd());
+    }
+}
+
+void CgenClassTable::emit_callee_begin()
+{
+    // 设置新$fp
+    emit_move(FP, SP, str);
+
+    // push $ra
+    emit_push(RA, str);
+}
+
+void CgenClassTable::emit_callee_end(int iNum)
+{
+    // pop $ra
+    emit_pop(RA, str);
+
+    // pop 所有栈变量
+    if (iNum != 0)
+    {
+        emit_addiu(SP, SP, iNum * 4, str);
+    }
+
+    // 恢复$fp
+    emit_pop(FP, str);
+
+    // RET
+    emit_return(str);
+}
 ///////////////////////////////////////////////////////////////////////
 //
 // CgenNode methods
