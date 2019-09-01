@@ -55,6 +55,9 @@ private:
     // 生成构造函数
     void code_object_initializer(CgenNodeP node);
 
+    // 生成各种函数
+    void code_class_methods(CgenNodeP node);
+
     // The following creates an inheritance graph from
     // a list of classes.  The graph is implemented as
     // a tree of `CgenNode', and class names are placed
@@ -75,6 +78,7 @@ private:
     std::vector<attr_class*> get_all_attr(CgenNodeP node);
     std::vector<attr_class*> get_self_attr(CgenNodeP node);
     std::vector<std::pair<std::string, method_class*>> get_all_method(CgenNodeP node);
+    std::vector<method_class*> get_self_method(CgenNodeP node);
 
     void emit_callee_begin();
     void emit_callee_end(int iNum);

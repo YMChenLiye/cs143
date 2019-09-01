@@ -859,6 +859,9 @@ void CgenClassTable::code()
 
     // 生成Object_Initializer
     code_object_initializer(root());
+
+    // 生成各个函数
+    code_class_methods(root());
 }
 
 CgenNodeP CgenClassTable::root()
@@ -1015,6 +1018,28 @@ std::vector<std::pair<std::string, method_class*>> CgenClassTable::get_all_metho
     return parentMethod;
 }
 
+std::vector<method_class*> CgenClassTable::get_self_method(CgenNodeP node)
+{
+    std::vector<method_class*> result;
+    if (!node)
+    {
+        return result;
+    }
+
+    auto features = node->features;
+    for (int i = features->first(); features->more(i); i = features->next(i))
+    {
+        auto pFeature = features->nth(i);
+
+        method_class* pMethod = dynamic_cast<method_class*>(pFeature);
+        if (pMethod)
+        {
+            result.push_back(pMethod);
+        }
+    }
+    return result;
+}
+
 void CgenClassTable::code_class_nameTab()
 {
     std::map<int, std::string> mapTag2ClassName;
@@ -1126,6 +1151,30 @@ void CgenClassTable::emit_callee_end(int iNum)
     // RET
     emit_return(str);
 }
+
+void CgenClassTable::code_class_methods(CgenNodeP node)
+{
+    // 只生成非basic类的方法
+    if (!node->basic())
+    {
+        std::vector<method_class*> vecMethod = get_self_method(node);
+        for (const auto& iter : vecMethod)
+        {
+            emit_method_ref(node->name, iter->name, str);
+            str << LABEL;
+            emit_callee_begin();
+            iter->expr->code(str);
+            emit_callee_end(iter->formals->len());
+        }
+    }
+
+    List<CgenNode>* children = node->get_children();
+    for (auto iter = children; iter; iter = iter->tl())
+    {
+        code_class_methods(iter->hd());
+    }
+}
+
 ///////////////////////////////////////////////////////////////////////
 //
 // CgenNode methods
