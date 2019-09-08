@@ -644,8 +644,11 @@ void CgenClassTable::code_constants()
     code_bools(boolclasstag);
 }
 
+CgenClassTable* CgenClassTable::singleton = nullptr;
 CgenClassTable::CgenClassTable(Classes classes, ostream& s) : nds(NULL), str(s)
 {
+    singleton = this;
+
     enterscope();
     if (cgen_debug)
         cout << "Building CgenClassTable" << endl;
@@ -841,13 +844,6 @@ void CgenClassTable::code()
     // 构造dispatchTables
     code_dispatch_tables(root());
 
-    auto p = nds->hd();
-    str << "nds-hd()->get_name() = " << p->get_name() << endl;
-    for (auto iter = nds; iter; iter = iter->tl())
-    {
-        str << iter->hd()->get_name() << endl;
-    }
-
     if (cgen_debug)
         cout << "coding global text" << endl;
     code_global_text();
@@ -860,7 +856,7 @@ void CgenClassTable::code()
     // 生成Object_Initializer
     code_object_initializer(root());
 
-    // 生成各个函数
+    // 生成各个方法
     code_class_methods(root());
 }
 
@@ -1127,8 +1123,14 @@ void CgenClassTable::code_object_initializer(CgenNodeP node)
 
 void CgenClassTable::emit_callee_begin()
 {
+    // 保存旧FP
+    emit_push(FP, str);
+
     // 设置新$fp
     emit_move(FP, SP, str);
+
+    // 保存self
+    emit_push(SELF, str);
 
     // push $ra
     emit_push(RA, str);
@@ -1139,14 +1141,17 @@ void CgenClassTable::emit_callee_end(int iNum)
     // pop $ra
     emit_pop(RA, str);
 
+    // 恢复self
+    emit_pop(SELF, str);
+
+    // 恢复$fp
+    emit_pop(FP, str);
+
     // pop 所有栈变量
     if (iNum != 0)
     {
         emit_addiu(SP, SP, iNum * 4, str);
     }
-
-    // 恢复$fp
-    emit_pop(FP, str);
 
     // RET
     emit_return(str);
@@ -1157,6 +1162,7 @@ void CgenClassTable::code_class_methods(CgenNodeP node)
     // 只生成非basic类的方法
     if (!node->basic())
     {
+        m_currentClass = node;
         std::vector<method_class*> vecMethod = get_self_method(node);
         for (const auto& iter : vecMethod)
         {
@@ -1175,6 +1181,35 @@ void CgenClassTable::code_class_methods(CgenNodeP node)
     }
 }
 
+int CgenClassTable::GetDispatchOffset(Symbol Class, Symbol function)
+{
+    if (std::string(Class->get_string()) == std::string("SELF_TYPE"))
+    {
+        Class = m_currentClass->name;
+    }
+
+    CgenNodeP node = lookup(Class);
+    if (!node)
+    {
+        str << "#not find " << Class->get_string() << endl;
+        return 0;
+    }
+    std::vector<std::pair<std::string, method_class*>> vecMethod = get_all_method(node);
+    int iOffset = 0;
+    for (const auto& method : vecMethod)
+    {
+        if (method.second->name == function)
+        {
+            return iOffset;
+        }
+        else
+        {
+            iOffset++;
+        }
+    }
+    str << "# not find " << function->get_string() << ", Class: " << Class->get_string() << endl;
+    return 0;
+}
 ///////////////////////////////////////////////////////////////////////
 //
 // CgenNode methods
@@ -1199,74 +1234,156 @@ CgenNode::CgenNode(Class_ nd, Basicness bstatus, CgenClassTableP ct)
 
 void assign_class::code(ostream& s)
 {
+    s << "\t\t\t# assign_class::code" << endl;
 }
 
 void static_dispatch_class::code(ostream& s)
 {
+    s << "\t\t\t# static_dispatch_class::code" << endl;
+    for (int i = actual->first(); actual->more(i); i = actual->next(i))
+    {
+        actual->nth(i)->code(s);
+        emit_push(ACC, s);
+    }
+    expr->code(s);
+
+    s << JAL;
+    emit_method_ref(type_name, name, s);
+    s << endl;
 }
 
 void dispatch_class::code(ostream& s)
 {
+    s << "\t\t\t# dispatch_class::code" << endl;
+
+    for (int i = actual->first(); actual->more(i); i = actual->next(i))
+    {
+        actual->nth(i)->code(s);
+        emit_push(ACC, s);
+    }
+
+    // 通过虚表跳转
+    // 1. 拿到函数偏移
+    int iOffset = CgenClassTable::GetInstance()->GetDispatchOffset(expr->get_type(), name);
+    s << "# offset = " << iOffset << endl;
+
+    expr->code(s);
+    emit_push(ACC, s);
+    // 2. 拿到具体函数指针(T1)
+    emit_load(ACC, 2, ACC, s);
+    emit_load(T1, iOffset, ACC, s);
+
+    emit_pop(ACC, s);
+    emit_jal(T1, s);
+
+    // todo
 }
 
 void cond_class::code(ostream& s)
 {
+    s << "\t\t\t# cond_class::code" << endl;
+    pred->code(s);
+    int iTrueLable = CgenClassTable::GetInstance()->GetNextLable();
+    int iFalseLable = CgenClassTable::GetInstance()->GetNextLable();
+    int iEndLable = CgenClassTable::GetInstance()->GetNextLable();
+    emit_bne(ACC, ZERO, iTrueLable, s);
+    emit_label_def(iFalseLable, s);
+    else_exp->code(s);
+    emit_branch(iEndLable, s);
+    emit_label_def(iTrueLable, s);
+    then_exp->code(s);
+    emit_label_def(iEndLable, s);
 }
 
 void loop_class::code(ostream& s)
 {
+    s << "\t\t\t# loop_class::code" << endl;
+    int iBeginLabel = CgenClassTable::GetInstance()->GetNextLable();
+    int iEndLabel = CgenClassTable::GetInstance()->GetNextLable();
+    emit_label_def(iBeginLabel, s);
+    pred->code(s);
+    emit_beqz(ACC, iEndLabel, s);
+    body->code(s);
+    emit_branch(iBeginLabel, s);
+    emit_label_def(iEndLabel, s);
 }
 
 void typcase_class::code(ostream& s)
 {
+    s << "\t\t\t# typcase_class::code" << endl;
 }
 
 void block_class::code(ostream& s)
 {
+    s << "\t\t\t# block_class::code" << endl;
+    for (int i = body->first(); body->more(i); i = body->next(i))
+        body->nth(i)->code(s);
 }
 
 void let_class::code(ostream& s)
 {
+    s << "\t\t\t# let_class::code" << endl;
+    new__class newClass(type_decl);
+    newClass.code(s);
+    emit_push(ACC, s);
+    init->code(s);
+    body->code(s);
+    emit_pop(ACC, s);
 }
 
 void plus_class::code(ostream& s)
 {
+    s << "\t\t\t# plus_class::code" << endl;
+    e1->code(s);
+    emit_push(ACC, s);
+    e2->code(s);
+    emit_pop(T1, s);
+    emit_add(ACC, ACC, T1, s);
 }
 
 void sub_class::code(ostream& s)
 {
+    s << "\t\t\t# sub_class::code" << endl;
 }
 
 void mul_class::code(ostream& s)
 {
+    s << "\t\t\t# mul_class::code" << endl;
 }
 
 void divide_class::code(ostream& s)
 {
+    s << "\t\t\t# divide_class::code" << endl;
 }
 
 void neg_class::code(ostream& s)
 {
+    s << "\t\t\t# neg_class::code" << endl;
 }
 
 void lt_class::code(ostream& s)
 {
+    s << "\t\t\t# lt_class::code" << endl;
 }
 
 void eq_class::code(ostream& s)
 {
+    s << "\t\t\t# eq_class::code" << endl;
 }
 
 void leq_class::code(ostream& s)
 {
+    s << "\t\t\t# leq_class::code" << endl;
 }
 
 void comp_class::code(ostream& s)
 {
+    s << "\t\t\t# comp_class::code" << endl;
 }
 
 void int_const_class::code(ostream& s)
 {
+    s << "\t\t\t# int_const_class::code" << endl;
     //
     // Need to be sure we have an IntEntry *, not an arbitrary Symbol
     //
@@ -1275,26 +1392,51 @@ void int_const_class::code(ostream& s)
 
 void string_const_class::code(ostream& s)
 {
+    s << "\t\t\t# string_const_class::code" << endl;
     emit_load_string(ACC, stringtable.lookup_string(token->get_string()), s);
 }
 
 void bool_const_class::code(ostream& s)
 {
+    s << "\t\t\t# bool_const_class::code" << endl;
     emit_load_bool(ACC, BoolConst(val), s);
 }
 
 void new__class::code(ostream& s)
 {
+    s << "\t\t\t# new__class::code" << endl;
+    // 不用保存FP,因为被调方没有恢复fp的操作
+    std::string sAddr = std::string(type_name->get_string()) + std::string(PROTOBJ_SUFFIX);
+    emit_load_address(ACC, (char*)sAddr.c_str(), s);
+    // 调用Object.copy后再调用对用的init方法
+    emit_jal("Object.copy", s);
+    emit_push(ACC, s);
+    sAddr = std::string(type_name->get_string()) + std::string(CLASSINIT_SUFFIX);
+    emit_jal((char*)sAddr.c_str(), s);
+    emit_pop(ACC, s);
 }
 
 void isvoid_class::code(ostream& s)
 {
+    s << "\t\t\t# isvoid_class::code" << endl;
 }
 
 void no_expr_class::code(ostream& s)
 {
+    s << "\t\t\t# no_expr_class::code" << endl;
 }
 
 void object_class::code(ostream& s)
 {
+    s << "\t\t\t# object_class::code" << endl;
+
+    // 拿到变量对应的地址
+    if (std::string(name->get_string()) == std::string("self"))
+    {
+        emit_move(ACC, SELF, s);
+    }
+    else
+    {
+        s << "# unknow obj" << endl;
+    }
 }

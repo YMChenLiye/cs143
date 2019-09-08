@@ -50,7 +50,7 @@ int main(int argc, char* argv[])
             cerr << "Cannot open output file " << out_filename << endl;
             exit(1);
         }
-        // ast_root->cgen(s);
+        ast_root->cgen(s);
         ast_root->cgen(cout);
     }
     else

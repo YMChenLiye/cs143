@@ -23,6 +23,13 @@ typedef CgenNode* CgenNodeP;
 
 class CgenClassTable : public SymbolTable<Symbol, CgenNode>
 {
+public:
+    static CgenClassTable* singleton;
+    static CgenClassTable* GetInstance() { return singleton; }
+    int GetNextLable() { return ++m_iLable; }
+    int GetDispatchOffset(Symbol Class, Symbol function);
+    CgenNodeP m_currentClass = nullptr;
+
 private:
     List<CgenNode>* nds;
     ostream& str;
@@ -31,6 +38,7 @@ private:
     int boolclasstag;
 
     int m_iClassTag = 0;
+    int m_iLable = 0;
     int GetNextClassTag() { return m_iClassTag++; }
     std::map<std::string, int> m_mapClassTag;
 
@@ -55,7 +63,7 @@ private:
     // 生成构造函数
     void code_object_initializer(CgenNodeP node);
 
-    // 生成各种函数
+    // 生成各种方法
     void code_class_methods(CgenNodeP node);
 
     // The following creates an inheritance graph from
