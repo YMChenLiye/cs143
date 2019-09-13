@@ -40,7 +40,7 @@ int main(int argc, char* argv[])
     //
     ast_yyparse();
 
-    ast_root->dump_with_types(cout, 2);
+    // ast_root->dump_with_types(cout, 2);
 
     if (out_filename)
     {
@@ -51,7 +51,7 @@ int main(int argc, char* argv[])
             exit(1);
         }
         ast_root->cgen(s);
-        ast_root->cgen(cout);
+        // ast_root->cgen(cout);
     }
     else
     {

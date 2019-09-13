@@ -4,6 +4,7 @@
  *)
 
 class Main inherits IO {
-  main():Object { out_string("true") };
+  i:Int;
+  main():Object { out_int(i) };
 };
 

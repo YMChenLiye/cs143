@@ -23,6 +23,7 @@
 //**************************************************************
 
 #include "cgen.h"
+#include <algorithm>
 #include <set>
 #include "cgen_gc.h"
 
@@ -498,6 +499,10 @@ void BoolConst::code_ref(ostream& s) const
     s << BOOLCONST_PREFIX << val;
 }
 
+std::string BoolConst::code_str() const
+{
+    return BOOLCONST_PREFIX + std::to_string(val);
+}
 //
 // Emit code for a constant Bool.
 // You should fill in the code naming the dispatch table.
@@ -882,7 +887,28 @@ void CgenClassTable::code_prototype_object(CgenNodeP node)
     str << endl;
     for (size_t i = 0; i < vecAttr.size(); ++i)
     {
-        str << WORD << "0" << endl;
+        if (vecAttr[i]->type_decl == Bool)
+        {
+            str << WORD << BoolConst(0).code_str() << endl;
+        }
+        else if (vecAttr[i]->type_decl == Int)
+        {
+            IntEntry* int0 = inttable.lookup_string("0");
+            str << WORD;
+            int0->code_ref(str);
+            str << endl;
+        }
+        else if (vecAttr[i]->type_decl == Str)
+        {
+            StringEntry* strEmpty = stringtable.lookup_string("");
+            str << WORD;
+            strEmpty->code_ref(str);
+            str << endl;
+        }
+        else
+        {
+            str << WORD << "0" << endl;
+        }
     }
 
     List<CgenNode>* children = node->get_children();
@@ -1102,7 +1128,8 @@ void CgenClassTable::code_object_initializer(CgenNodeP node)
     size_t uFirstAttrIndex = vecAllAttr.size() - vecSelfAttr.size();
     for (size_t i = 0; i < vecSelfAttr.size(); ++i)
     {
-        if (vecSelfAttr[i]->init)
+        assert(vecSelfAttr[i]->init);
+        if (!dynamic_cast<no_expr_class*>(vecSelfAttr[i]->init))
         {
             vecSelfAttr[i]->init->code(str);
             emit_store(ACC, DEFAULT_OBJFIELDS + uFirstAttrIndex + i, SELF, str);
@@ -1166,6 +1193,8 @@ void CgenClassTable::code_class_methods(CgenNodeP node)
         std::vector<method_class*> vecMethod = get_self_method(node);
         for (const auto& iter : vecMethod)
         {
+            // 记录当前处理函数
+            m_currentMethod = iter;
             emit_method_ref(node->name, iter->name, str);
             str << LABEL;
             emit_callee_begin();
@@ -1210,6 +1239,81 @@ int CgenClassTable::GetDispatchOffset(Symbol Class, Symbol function)
     str << "# not find " << function->get_string() << ", Class: " << Class->get_string() << endl;
     return 0;
 }
+
+int CgenClassTable::GetAttrOffset(Symbol ObjName)
+{
+    std::vector<attr_class*> vecAttr = get_all_attr(m_currentClass);
+    int iOffset = 1;
+    for (const auto& pAttr : vecAttr)
+    {
+        if (pAttr->name == ObjName)
+        {
+            return iOffset;
+        }
+        else
+        {
+            ++iOffset;
+        }
+    }
+    return 0;
+}
+
+int CgenClassTable::GetParamOffset(Symbol ParamName)
+{
+    std::vector<formal_class*> vecParam;
+    Formals formals = m_currentMethod->formals;
+    for (int i = formals->first(); formals->more(i); i = formals->next(i))
+    {
+        vecParam.push_back(dynamic_cast<formal_class*>(formals->nth(i)));
+    }
+
+    // 翻转
+    std::reverse(vecParam.begin(), vecParam.end());
+
+    int iOffset = 1;
+    for (const auto& param : vecParam)
+    {
+        if (param->name == ParamName)
+        {
+            return iOffset;
+        }
+        else
+        {
+            ++iOffset;
+        }
+    }
+
+    return 0;
+}
+void CgenClassTable::AddStackVar(Symbol VarName)
+{
+    m_StackVar.push_back(VarName);
+}
+
+void CgenClassTable::DelStackVar()
+{
+    assert(!m_StackVar.empty());
+    m_StackVar.pop_back();
+}
+int CgenClassTable::GetVarOffset(Symbol VarName)
+{
+    auto tmp = m_StackVar;
+    std::reverse(tmp.begin(), tmp.end());
+    int iOffset = 1;
+    for (const auto& var : tmp)
+    {
+        if (var == VarName)
+        {
+            return iOffset;
+        }
+        else
+        {
+            ++iOffset;
+        }
+    }
+    return 0;
+}
+
 ///////////////////////////////////////////////////////////////////////
 //
 // CgenNode methods
@@ -1275,8 +1379,6 @@ void dispatch_class::code(ostream& s)
 
     emit_pop(ACC, s);
     emit_jal(T1, s);
-
-    // todo
 }
 
 void cond_class::code(ostream& s)
@@ -1286,7 +1388,8 @@ void cond_class::code(ostream& s)
     int iTrueLable = CgenClassTable::GetInstance()->GetNextLable();
     int iFalseLable = CgenClassTable::GetInstance()->GetNextLable();
     int iEndLable = CgenClassTable::GetInstance()->GetNextLable();
-    emit_bne(ACC, ZERO, iTrueLable, s);
+    emit_load_address(T1, (char*)BoolConst(0).code_str().c_str(), s);
+    emit_bne(ACC, T1, iTrueLable, s);
     emit_label_def(iFalseLable, s);
     else_exp->code(s);
     emit_branch(iEndLable, s);
@@ -1302,7 +1405,8 @@ void loop_class::code(ostream& s)
     int iEndLabel = CgenClassTable::GetInstance()->GetNextLable();
     emit_label_def(iBeginLabel, s);
     pred->code(s);
-    emit_beqz(ACC, iEndLabel, s);
+    emit_load_address(T1, (char*)BoolConst(0).code_str().c_str(), s);
+    emit_beq(ACC, T1, iEndLabel, s);
     body->code(s);
     emit_branch(iBeginLabel, s);
     emit_label_def(iEndLabel, s);
@@ -1326,9 +1430,14 @@ void let_class::code(ostream& s)
     new__class newClass(type_decl);
     newClass.code(s);
     emit_push(ACC, s);
+
+    CgenClassTable::GetInstance()->AddStackVar(identifier);
+
     init->code(s);
     body->code(s);
     emit_pop(ACC, s);
+
+    CgenClassTable::GetInstance()->DelStackVar();
 }
 
 void plus_class::code(ostream& s)
@@ -1338,47 +1447,122 @@ void plus_class::code(ostream& s)
     emit_push(ACC, s);
     e2->code(s);
     emit_pop(T1, s);
-    emit_add(ACC, ACC, T1, s);
+    emit_add(ACC, T1, ACC, s);
 }
 
 void sub_class::code(ostream& s)
 {
     s << "\t\t\t# sub_class::code" << endl;
+    e1->code(s);
+    emit_push(ACC, s);
+    e2->code(s);
+    emit_pop(T1, s);
+    emit_sub(ACC, T1, ACC, s);
 }
 
 void mul_class::code(ostream& s)
 {
     s << "\t\t\t# mul_class::code" << endl;
+    e1->code(s);
+    emit_push(ACC, s);
+    e2->code(s);
+    emit_pop(T1, s);
+    emit_mul(ACC, T1, ACC, s);
 }
 
 void divide_class::code(ostream& s)
 {
     s << "\t\t\t# divide_class::code" << endl;
+    e1->code(s);
+    emit_push(ACC, s);
+    e2->code(s);
+    emit_pop(T1, s);
+    emit_div(ACC, T1, ACC, s);
 }
 
 void neg_class::code(ostream& s)
 {
     s << "\t\t\t# neg_class::code" << endl;
+    e1->code(s);
+    emit_neg(ACC, ACC, s);
 }
 
 void lt_class::code(ostream& s)
 {
     s << "\t\t\t# lt_class::code" << endl;
+    e1->code(s);
+    emit_push(ACC, s);
+    e2->code(s);
+    emit_pop(T1, s);
+    int iTrueLable = CgenClassTable::GetInstance()->GetNextLable();
+    int iFalseLable = CgenClassTable::GetInstance()->GetNextLable();
+    int iEndLable = CgenClassTable::GetInstance()->GetNextLable();
+    emit_blt(T1, ACC, iTrueLable, s);
+    emit_label_def(iFalseLable, s);
+    emit_load_bool(ACC, BoolConst(0), s);  // false: ACC = 0
+    emit_branch(iEndLable, s);
+    emit_label_def(iTrueLable, s);
+    emit_load_bool(ACC, BoolConst(1), s);  // true: ACC = 1
+    emit_label_def(iEndLable, s);
 }
 
 void eq_class::code(ostream& s)
 {
     s << "\t\t\t# eq_class::code" << endl;
+
+    e1->code(s);
+    emit_push(ACC, s);
+    e2->code(s);
+    emit_pop(T1, s);
+    int iTrueLable = CgenClassTable::GetInstance()->GetNextLable();
+    int iFalseLable = CgenClassTable::GetInstance()->GetNextLable();
+    int iEndLable = CgenClassTable::GetInstance()->GetNextLable();
+    emit_beq(T1, ACC, iTrueLable, s);
+    emit_label_def(iFalseLable, s);
+    emit_load_bool(ACC, BoolConst(0), s);  // false: ACC = 0
+    emit_branch(iEndLable, s);
+    emit_label_def(iTrueLable, s);
+    emit_load_bool(ACC, BoolConst(1), s);  // true: ACC = 1
+    emit_label_def(iEndLable, s);
 }
 
 void leq_class::code(ostream& s)
 {
     s << "\t\t\t# leq_class::code" << endl;
+
+    e1->code(s);
+    emit_push(ACC, s);
+    e2->code(s);
+    emit_pop(T1, s);
+    int iTrueLable = CgenClassTable::GetInstance()->GetNextLable();
+    int iFalseLable = CgenClassTable::GetInstance()->GetNextLable();
+    int iEndLable = CgenClassTable::GetInstance()->GetNextLable();
+    emit_bleq(T1, ACC, iTrueLable, s);
+    emit_label_def(iFalseLable, s);
+    emit_load_bool(ACC, BoolConst(0), s);  // false: ACC = 0
+    emit_branch(iEndLable, s);
+    emit_label_def(iTrueLable, s);
+    emit_load_bool(ACC, BoolConst(1), s);  // true: ACC = 1
+    emit_label_def(iEndLable, s);
 }
 
 void comp_class::code(ostream& s)
 {
     s << "\t\t\t# comp_class::code" << endl;
+
+    e1->code(s);
+    int iTrueLable = CgenClassTable::GetInstance()->GetNextLable();
+    int iFalseLable = CgenClassTable::GetInstance()->GetNextLable();
+    int iEndLable = CgenClassTable::GetInstance()->GetNextLable();
+
+    emit_beqz(ACC, iTrueLable, s);
+
+    emit_label_def(iFalseLable, s);
+    emit_load_bool(ACC, BoolConst(0), s);  // false: ACC = 0
+    emit_branch(iEndLable, s);
+    emit_label_def(iTrueLable, s);
+    emit_load_bool(ACC, BoolConst(1), s);  // true: ACC = 1
+    emit_label_def(iEndLable, s);
 }
 
 void int_const_class::code(ostream& s)
@@ -1430,13 +1614,38 @@ void object_class::code(ostream& s)
 {
     s << "\t\t\t# object_class::code" << endl;
 
-    // 拿到变量对应的地址
+    // 在成员变量中查找
+    int iAttrOffset = CgenClassTable::GetInstance()->GetAttrOffset(name);
+    if (iAttrOffset > 0)
+    {
+        emit_load(ACC, iAttrOffset + DEFAULT_OBJFIELDS - 1, SELF, s);
+        return;
+    }
+
+    // 在函数参数中查找
+    int iParamOffset = CgenClassTable::GetInstance()->GetParamOffset(name);
+    if (iParamOffset > 0)
+    {
+        emit_load(ACC, iParamOffset + 1, FP, s);
+        return;
+    }
+
+    // 在栈变量中查找
+    int iVarOffset = CgenClassTable::GetInstance()->GetVarOffset(name);
+    if (iVarOffset > 0)
+    {
+        emit_load(ACC, iVarOffset, SP, s);
+        return;
+    }
+
+    // self
     if (std::string(name->get_string()) == std::string("self"))
     {
         emit_move(ACC, SELF, s);
     }
     else
     {
+        assert(false);
         s << "# unknow obj" << endl;
     }
 }

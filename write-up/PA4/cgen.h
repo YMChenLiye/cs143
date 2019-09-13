@@ -29,6 +29,12 @@ public:
     int GetNextLable() { return ++m_iLable; }
     int GetDispatchOffset(Symbol Class, Symbol function);
     CgenNodeP m_currentClass = nullptr;
+    method_class* m_currentMethod = nullptr;
+    int GetAttrOffset(Symbol ObjName);
+    int GetParamOffset(Symbol ParamName);
+    void AddStackVar(Symbol VarName);
+    void DelStackVar();
+    int GetVarOffset(Symbol VarName);
 
 private:
     List<CgenNode>* nds;
@@ -41,6 +47,8 @@ private:
     int m_iLable = 0;
     int GetNextClassTag() { return m_iClassTag++; }
     std::map<std::string, int> m_mapClassTag;
+
+    std::vector<Symbol> m_StackVar;
 
     // The following methods emit code for
     // constants and global declarations.
@@ -119,4 +127,5 @@ public:
     BoolConst(int);
     void code_def(ostream&, int boolclasstag);
     void code_ref(ostream&) const;
+    std::string code_str() const;
 };
