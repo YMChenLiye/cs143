@@ -1345,6 +1345,12 @@ int CgenClassTable::GetVarOffset(Symbol VarName)
     return 0;
 }
 
+int CgenClassTable::GetClassTag(Symbol type_decl)
+{
+    auto iter = m_mapClassTag.find(std::string(type_decl->get_string()));
+    assert(iter != m_mapClassTag.end());
+    return iter->second;
+}
 ///////////////////////////////////////////////////////////////////////
 //
 // CgenNode methods
@@ -1464,6 +1470,65 @@ void loop_class::code(ostream& s)
 void typcase_class::code(ostream& s)
 {
     s << "\t\t\t# typcase_class::code" << endl;
+
+    std::vector<branch_class*> vecBranch;
+    for (int i = cases->first(); cases->more(i); i = cases->next(i))
+    {
+        branch_class* pBranch = dynamic_cast<branch_class*>(cases->nth(i));
+        assert(pBranch);
+        vecBranch.push_back(pBranch);
+    }
+
+    std::vector<int> vecLabel;
+    for (const auto& pBranch : vecBranch)
+    {
+        vecLabel.push_back(CgenClassTable::GetInstance()->GetNextLable());
+    }
+    assert(vecLabel.size() == vecBranch.size());
+
+    expr->code(s);
+
+    // 是否void
+    int iVoidLabel = CgenClassTable::GetInstance()->GetNextLable();
+    emit_beqz(ACC, iVoidLabel, s);
+    emit_load(T1, TAG_OFFSET, ACC, s);  // Get Class Tag
+    for (size_t i = 0; i < vecBranch.size(); ++i)
+    {
+        int iLabel = vecLabel[i];
+        branch_class* pBranch = vecBranch[i];
+        emit_load_imm(T2, CgenClassTable::GetInstance()->GetClassTag(pBranch->type_decl), s);
+        emit_beq(T1, T2, iLabel, s);
+    }
+
+    // 没找到对应的class
+    emit_jal("_case_abort", s);
+
+    emit_label_def(iVoidLabel, s);
+    emit_load_imm(T1, line_number, s);
+    char* pFileName = CgenClassTable::GetInstance()->m_currentClass->filename->get_string();
+    emit_load_string(ACC, stringtable.lookup_string(pFileName), s);
+    emit_jal("_case_abort2", s);
+
+    int iEndLabel = CgenClassTable::GetInstance()->GetNextLable();
+    for (size_t i = 0; i < vecBranch.size(); ++i)
+    {
+        int iLabel = vecLabel[i];
+        branch_class* pBranch = vecBranch[i];
+        emit_label_def(iLabel, s);
+
+        // 保存栈上变量
+        emit_push(ACC, s, pBranch->name);
+
+        pBranch->expr->code(s);
+
+        // 析构栈上变量
+        emit_pop(ACC, s);
+
+        // 跳出
+        emit_branch(iEndLabel, s);
+    }
+
+    emit_label_def(iEndLabel, s);
 }
 
 void block_class::code(ostream& s)

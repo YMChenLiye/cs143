@@ -37,6 +37,8 @@ public:
     void AddStackVar(Symbol VarName);
     void DelStackVar();
 
+    int GetClassTag(Symbol type_decl);
+
 private:
     List<CgenNode>* nds;
     ostream& str;
