@@ -1635,10 +1635,17 @@ void eq_class::code(ostream& s)
     e1->code(s);
     emit_push(ACC, s);
     e2->code(s);
+    emit_move(T2, ACC, s);
     emit_pop(T1, s);
+    emit_load_bool(ACC, BoolConst(1), s);
+    emit_load_bool(A1, BoolConst(0), s);
+    emit_jal("equality_test", s);
+    // 如果相等,A0 = true, 否则A0 = false
+
     int iTrueLable = CgenClassTable::GetInstance()->GetNextLable();
     int iFalseLable = CgenClassTable::GetInstance()->GetNextLable();
     int iEndLable = CgenClassTable::GetInstance()->GetNextLable();
+    emit_load_bool(T1, BoolConst(1), s);
     emit_beq(T1, ACC, iTrueLable, s);
     emit_label_def(iFalseLable, s);
     emit_load_bool(ACC, BoolConst(0), s);  // false: ACC = 0
