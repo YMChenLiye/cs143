@@ -30,11 +30,13 @@ public:
     int GetDispatchOffset(Symbol Class, Symbol function);
     CgenNodeP m_currentClass = nullptr;
     method_class* m_currentMethod = nullptr;
-    int GetAttrOffset(Symbol ObjName);
-    int GetParamOffset(Symbol ParamName);
+
+    // 生成右值引用代码
+    bool emit_Right_Value_Ref(Symbol ValueName);
+    bool emit_Right_value_Addr(Symbol ValueName);
+
     void AddStackVar(Symbol VarName);
     void DelStackVar();
-    int GetVarOffset(Symbol VarName);
 
 private:
     List<CgenNode>* nds;
@@ -98,6 +100,10 @@ private:
 
     void emit_callee_begin();
     void emit_callee_end(int iNum);
+
+    int GetAttrOffset(Symbol ObjName);
+    int GetParamOffset(Symbol ParamName);
+    int GetVarOffset(Symbol VarName);
 };
 
 class CgenNode : public class__class

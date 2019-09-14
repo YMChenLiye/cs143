@@ -1240,6 +1240,63 @@ int CgenClassTable::GetDispatchOffset(Symbol Class, Symbol function)
     return 0;
 }
 
+bool CgenClassTable::emit_Right_Value_Ref(Symbol ValueName)
+{
+    // 在成员变量中查找
+    int iAttrOffset = GetAttrOffset(ValueName);
+    if (iAttrOffset > 0)
+    {
+        emit_load(ACC, iAttrOffset + DEFAULT_OBJFIELDS - 1, SELF, str);
+        return true;
+    }
+
+    // 在函数参数中查找
+    int iParamOffset = GetParamOffset(ValueName);
+    if (iParamOffset > 0)
+    {
+        emit_load(ACC, iParamOffset + 1, FP, str);
+        return true;
+    }
+
+    // 在栈变量中查找
+    int iVarOffset = GetVarOffset(ValueName);
+    if (iVarOffset > 0)
+    {
+        emit_load(ACC, iVarOffset, SP, str);
+        return true;
+    }
+
+    return false;
+}
+bool CgenClassTable::emit_Right_value_Addr(Symbol ValueName)
+{
+    // 在成员变量中查找
+    int iAttrOffset = GetAttrOffset(ValueName);
+    if (iAttrOffset > 0)
+    {
+        emit_addiu(T1, SELF, (iAttrOffset + DEFAULT_OBJFIELDS - 1) * WORD_SIZE, str);
+        return true;
+    }
+
+    // 在函数参数中查找
+    int iParamOffset = GetParamOffset(ValueName);
+    if (iParamOffset > 0)
+    {
+        emit_addiu(T1, FP, (iParamOffset + 1) * WORD_SIZE, str);
+        return true;
+    }
+
+    // 在栈变量中查找
+    int iVarOffset = GetVarOffset(ValueName);
+    if (iVarOffset > 0)
+    {
+        emit_addiu(T1, SP, iVarOffset * WORD_SIZE, str);
+        return true;
+    }
+
+    return false;
+}
+
 int CgenClassTable::GetAttrOffset(Symbol ObjName)
 {
     std::vector<attr_class*> vecAttr = get_all_attr(m_currentClass);
@@ -1339,6 +1396,13 @@ CgenNode::CgenNode(Class_ nd, Basicness bstatus, CgenClassTableP ct)
 void assign_class::code(ostream& s)
 {
     s << "\t\t\t# assign_class::code" << endl;
+
+    bool ok = CgenClassTable::GetInstance()->emit_Right_value_Addr(name);
+    assert(ok);
+    emit_push(T1, s);
+    expr->code(s);
+    emit_pop(T1, s);
+    emit_store(ACC, 0, T1, s);
 }
 
 void static_dispatch_class::code(ostream& s)
@@ -1364,6 +1428,11 @@ void dispatch_class::code(ostream& s)
     {
         actual->nth(i)->code(s);
         emit_push(ACC, s);
+        CgenClassTable::GetInstance()->AddStackVar(nullptr);
+    }
+    for (int i = actual->first(); actual->more(i); i = actual->next(i))
+    {
+        CgenClassTable::GetInstance()->DelStackVar();
     }
 
     // 通过虚表跳转
@@ -1427,16 +1496,34 @@ void block_class::code(ostream& s)
 void let_class::code(ostream& s)
 {
     s << "\t\t\t# let_class::code" << endl;
-    new__class newClass(type_decl);
-    newClass.code(s);
-    emit_push(ACC, s);
 
+    if (dynamic_cast<no_expr_class*>(init))
+    {
+        // 没有初始化栈变量
+        if (type_decl == Str)
+        {
+            emit_load_string(ACC, stringtable.lookup_string(""), s);
+        }
+        else if (type_decl == Int)
+        {
+            emit_load_int(ACC, inttable.lookup_string("0"), s);
+        }
+        else if (type_decl == Bool)
+        {
+            emit_load_bool(ACC, BoolConst(0), s);
+        }
+    }
+    else
+    {
+        init->code(s);
+    }
+
+    emit_push(ACC, s);
     CgenClassTable::GetInstance()->AddStackVar(identifier);
 
-    init->code(s);
     body->code(s);
-    emit_pop(ACC, s);
 
+    emit_pop(ACC, s);
     CgenClassTable::GetInstance()->DelStackVar();
 }
 
@@ -1614,38 +1701,22 @@ void object_class::code(ostream& s)
 {
     s << "\t\t\t# object_class::code" << endl;
 
-    // 在成员变量中查找
-    int iAttrOffset = CgenClassTable::GetInstance()->GetAttrOffset(name);
-    if (iAttrOffset > 0)
+    bool ok = CgenClassTable::GetInstance()->emit_Right_value_Addr(name);
+    if (!ok)
     {
-        emit_load(ACC, iAttrOffset + DEFAULT_OBJFIELDS - 1, SELF, s);
-        return;
-    }
-
-    // 在函数参数中查找
-    int iParamOffset = CgenClassTable::GetInstance()->GetParamOffset(name);
-    if (iParamOffset > 0)
-    {
-        emit_load(ACC, iParamOffset + 1, FP, s);
-        return;
-    }
-
-    // 在栈变量中查找
-    int iVarOffset = CgenClassTable::GetInstance()->GetVarOffset(name);
-    if (iVarOffset > 0)
-    {
-        emit_load(ACC, iVarOffset, SP, s);
-        return;
-    }
-
-    // self
-    if (std::string(name->get_string()) == std::string("self"))
-    {
-        emit_move(ACC, SELF, s);
+        // self
+        if (std::string(name->get_string()) == std::string("self"))
+        {
+            emit_move(ACC, SELF, s);
+        }
+        else
+        {
+            assert(false);
+            s << "# unknow obj" << endl;
+        }
     }
     else
     {
-        assert(false);
-        s << "# unknow obj" << endl;
+        emit_load(ACC, 0, T1, s);
     }
 }
