@@ -329,16 +329,18 @@ static void emit_branch(int l, ostream& s)
 //
 // Push a register on the stack. The stack grows towards smaller addresses.
 //
-static void emit_push(char* reg, ostream& str)
+static void emit_push(char* reg, ostream& str, Symbol varName = nullptr)
 {
     emit_store(reg, 0, SP, str);
     emit_addiu(SP, SP, -4, str);
+    CgenClassTable::GetInstance()->AddStackVar(varName);
 }
 
 static void emit_pop(char* reg, ostream& str)
 {
     emit_load(reg, 1, SP, str);
     emit_addiu(SP, SP, 4, str);
+    CgenClassTable::GetInstance()->DelStackVar();
 }
 
 //
@@ -1387,6 +1389,10 @@ void static_dispatch_class::code(ostream& s)
     }
     expr->code(s);
 
+    for (int i = actual->first(); actual->more(i); i = actual->next(i))
+    {
+        CgenClassTable::GetInstance()->DelStackVar();
+    }
     s << JAL;
     emit_method_ref(type_name, name, s);
     s << endl;
@@ -1400,11 +1406,6 @@ void dispatch_class::code(ostream& s)
     {
         actual->nth(i)->code(s);
         emit_push(ACC, s);
-        CgenClassTable::GetInstance()->AddStackVar(nullptr);
-    }
-    for (int i = actual->first(); actual->more(i); i = actual->next(i))
-    {
-        CgenClassTable::GetInstance()->DelStackVar();
     }
 
     // 通过虚表跳转
@@ -1419,6 +1420,13 @@ void dispatch_class::code(ostream& s)
     emit_load(T1, iOffset, ACC, s);
 
     emit_pop(ACC, s);
+
+    // 函数调用后不再维护压栈参数
+    for (int i = actual->first(); actual->more(i); i = actual->next(i))
+    {
+        CgenClassTable::GetInstance()->DelStackVar();
+    }
+
     emit_jal(T1, s);
 }
 
@@ -1446,7 +1454,7 @@ void loop_class::code(ostream& s)
     int iEndLabel = CgenClassTable::GetInstance()->GetNextLable();
     emit_label_def(iBeginLabel, s);
     pred->code(s);
-    emit_load_address(T1, (char*)BoolConst(0).code_str().c_str(), s);
+    emit_load_bool(T1, BoolConst(0), s);
     emit_beq(ACC, T1, iEndLabel, s);
     body->code(s);
     emit_branch(iBeginLabel, s);
@@ -1490,13 +1498,11 @@ void let_class::code(ostream& s)
         init->code(s);
     }
 
-    emit_push(ACC, s);
-    CgenClassTable::GetInstance()->AddStackVar(identifier);
+    emit_push(ACC, s, identifier);
 
     body->code(s);
 
     emit_pop(ACC, s);
-    CgenClassTable::GetInstance()->DelStackVar();
 }
 
 void plus_class::code(ostream& s)
@@ -1507,21 +1513,18 @@ void plus_class::code(ostream& s)
     emit_jal("Object.copy", s);
     emit_push(ACC, s);
 
-    CgenClassTable::GetInstance()->AddStackVar(nullptr);
-
     e1->code(s);
-    emit_load(T1, 3, ACC, s);
+    emit_load(T1, DEFAULT_OBJFIELDS, ACC, s);
     emit_push(T1, s);
 
     e2->code(s);
-    emit_load(T2, 3, ACC, s);
+    emit_load(T2, DEFAULT_OBJFIELDS, ACC, s);
     emit_pop(T1, s);
     emit_add(T1, T1, T2, s);  // result value
 
     // 获取临时右值
     emit_pop(ACC, s);
-    CgenClassTable::GetInstance()->DelStackVar();
-    emit_store(T1, 3, ACC, s);
+    emit_store(T1, DEFAULT_OBJFIELDS, ACC, s);
 }
 
 void sub_class::code(ostream& s)
@@ -1533,21 +1536,18 @@ void sub_class::code(ostream& s)
     emit_jal("Object.copy", s);
     emit_push(ACC, s);
 
-    CgenClassTable::GetInstance()->AddStackVar(nullptr);
-
     e1->code(s);
-    emit_load(T1, 3, ACC, s);
+    emit_load(T1, DEFAULT_OBJFIELDS, ACC, s);
     emit_push(T1, s);
 
     e2->code(s);
-    emit_load(T2, 3, ACC, s);
+    emit_load(T2, DEFAULT_OBJFIELDS, ACC, s);
     emit_pop(T1, s);
     emit_sub(T1, T1, T2, s);  // result value
 
     // 获取临时右值
     emit_pop(ACC, s);
-    CgenClassTable::GetInstance()->DelStackVar();
-    emit_store(T1, 3, ACC, s);
+    emit_store(T1, DEFAULT_OBJFIELDS, ACC, s);
 }
 
 void mul_class::code(ostream& s)
@@ -1559,21 +1559,18 @@ void mul_class::code(ostream& s)
     emit_jal("Object.copy", s);
     emit_push(ACC, s);
 
-    CgenClassTable::GetInstance()->AddStackVar(nullptr);
-
     e1->code(s);
-    emit_load(T1, 3, ACC, s);
+    emit_load(T1, DEFAULT_OBJFIELDS, ACC, s);
     emit_push(T1, s);
 
     e2->code(s);
-    emit_load(T2, 3, ACC, s);
+    emit_load(T2, DEFAULT_OBJFIELDS, ACC, s);
     emit_pop(T1, s);
     emit_mul(T1, T1, T2, s);  // result value
 
     // 获取临时右值
     emit_pop(ACC, s);
-    CgenClassTable::GetInstance()->DelStackVar();
-    emit_store(T1, 3, ACC, s);
+    emit_store(T1, DEFAULT_OBJFIELDS, ACC, s);
 }
 
 void divide_class::code(ostream& s)
@@ -1585,21 +1582,18 @@ void divide_class::code(ostream& s)
     emit_jal("Object.copy", s);
     emit_push(ACC, s);
 
-    CgenClassTable::GetInstance()->AddStackVar(nullptr);
-
     e1->code(s);
-    emit_load(T1, 3, ACC, s);
+    emit_load(T1, DEFAULT_OBJFIELDS, ACC, s);
     emit_push(T1, s);
 
     e2->code(s);
-    emit_load(T2, 3, ACC, s);
+    emit_load(T2, DEFAULT_OBJFIELDS, ACC, s);
     emit_pop(T1, s);
     emit_div(T1, T1, T2, s);  // result value
 
     // 获取临时右值
     emit_pop(ACC, s);
-    CgenClassTable::GetInstance()->DelStackVar();
-    emit_store(T1, 3, ACC, s);
+    emit_store(T1, DEFAULT_OBJFIELDS, ACC, s);
 }
 
 void neg_class::code(ostream& s)
@@ -1613,13 +1607,15 @@ void lt_class::code(ostream& s)
 {
     s << "\t\t\t# lt_class::code" << endl;
     e1->code(s);
-    emit_push(ACC, s);
+    emit_load(T1, DEFAULT_OBJFIELDS, ACC, s);
+    emit_push(T1, s);
     e2->code(s);
+    emit_load(T2, DEFAULT_OBJFIELDS, ACC, s);
     emit_pop(T1, s);
     int iTrueLable = CgenClassTable::GetInstance()->GetNextLable();
     int iFalseLable = CgenClassTable::GetInstance()->GetNextLable();
     int iEndLable = CgenClassTable::GetInstance()->GetNextLable();
-    emit_blt(T1, ACC, iTrueLable, s);
+    emit_blt(T1, T2, iTrueLable, s);
     emit_label_def(iFalseLable, s);
     emit_load_bool(ACC, BoolConst(0), s);  // false: ACC = 0
     emit_branch(iEndLable, s);
@@ -1680,11 +1676,12 @@ void comp_class::code(ostream& s)
     s << "\t\t\t# comp_class::code" << endl;
 
     e1->code(s);
+    emit_load(T1, DEFAULT_OBJFIELDS, ACC, s);
     int iTrueLable = CgenClassTable::GetInstance()->GetNextLable();
     int iFalseLable = CgenClassTable::GetInstance()->GetNextLable();
     int iEndLable = CgenClassTable::GetInstance()->GetNextLable();
 
-    emit_beqz(ACC, iTrueLable, s);
+    emit_beqz(T1, iTrueLable, s);
 
     emit_label_def(iFalseLable, s);
     emit_load_bool(ACC, BoolConst(0), s);  // false: ACC = 0

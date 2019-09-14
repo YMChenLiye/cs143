@@ -5,6 +5,11 @@
 
 class Main inherits IO {
   i:Int;
-  main():Object { out_int(i) };
+  main():Object { let x:Int <- 0 in {
+    while x < 100 loop {
+      x <- x + 1;
+    } pool;
+    out_int(x);
+  } };
 };
 
