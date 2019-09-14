@@ -1240,35 +1240,7 @@ int CgenClassTable::GetDispatchOffset(Symbol Class, Symbol function)
     return 0;
 }
 
-bool CgenClassTable::emit_Right_Value_Ref(Symbol ValueName)
-{
-    // 在成员变量中查找
-    int iAttrOffset = GetAttrOffset(ValueName);
-    if (iAttrOffset > 0)
-    {
-        emit_load(ACC, iAttrOffset + DEFAULT_OBJFIELDS - 1, SELF, str);
-        return true;
-    }
-
-    // 在函数参数中查找
-    int iParamOffset = GetParamOffset(ValueName);
-    if (iParamOffset > 0)
-    {
-        emit_load(ACC, iParamOffset + 1, FP, str);
-        return true;
-    }
-
-    // 在栈变量中查找
-    int iVarOffset = GetVarOffset(ValueName);
-    if (iVarOffset > 0)
-    {
-        emit_load(ACC, iVarOffset, SP, str);
-        return true;
-    }
-
-    return false;
-}
-bool CgenClassTable::emit_Right_value_Addr(Symbol ValueName)
+bool CgenClassTable::emit_Left_value_Addr(Symbol ValueName)
 {
     // 在成员变量中查找
     int iAttrOffset = GetAttrOffset(ValueName);
@@ -1397,7 +1369,7 @@ void assign_class::code(ostream& s)
 {
     s << "\t\t\t# assign_class::code" << endl;
 
-    bool ok = CgenClassTable::GetInstance()->emit_Right_value_Addr(name);
+    bool ok = CgenClassTable::GetInstance()->emit_Left_value_Addr(name);
     assert(ok);
     emit_push(T1, s);
     expr->code(s);
@@ -1530,41 +1502,104 @@ void let_class::code(ostream& s)
 void plus_class::code(ostream& s)
 {
     s << "\t\t\t# plus_class::code" << endl;
-    e1->code(s);
+    // 新建一个右值
+    emit_load_int(ACC, inttable.lookup_string("0"), s);
+    emit_jal("Object.copy", s);
     emit_push(ACC, s);
+
+    CgenClassTable::GetInstance()->AddStackVar(nullptr);
+
+    e1->code(s);
+    emit_load(T1, 3, ACC, s);
+    emit_push(T1, s);
+
     e2->code(s);
+    emit_load(T2, 3, ACC, s);
     emit_pop(T1, s);
-    emit_add(ACC, T1, ACC, s);
+    emit_add(T1, T1, T2, s);  // result value
+
+    // 获取临时右值
+    emit_pop(ACC, s);
+    CgenClassTable::GetInstance()->DelStackVar();
+    emit_store(T1, 3, ACC, s);
 }
 
 void sub_class::code(ostream& s)
 {
     s << "\t\t\t# sub_class::code" << endl;
-    e1->code(s);
+
+    // 新建一个右值
+    emit_load_int(ACC, inttable.lookup_string("0"), s);
+    emit_jal("Object.copy", s);
     emit_push(ACC, s);
+
+    CgenClassTable::GetInstance()->AddStackVar(nullptr);
+
+    e1->code(s);
+    emit_load(T1, 3, ACC, s);
+    emit_push(T1, s);
+
     e2->code(s);
+    emit_load(T2, 3, ACC, s);
     emit_pop(T1, s);
-    emit_sub(ACC, T1, ACC, s);
+    emit_sub(T1, T1, T2, s);  // result value
+
+    // 获取临时右值
+    emit_pop(ACC, s);
+    CgenClassTable::GetInstance()->DelStackVar();
+    emit_store(T1, 3, ACC, s);
 }
 
 void mul_class::code(ostream& s)
 {
     s << "\t\t\t# mul_class::code" << endl;
-    e1->code(s);
+
+    // 新建一个右值
+    emit_load_int(ACC, inttable.lookup_string("0"), s);
+    emit_jal("Object.copy", s);
     emit_push(ACC, s);
+
+    CgenClassTable::GetInstance()->AddStackVar(nullptr);
+
+    e1->code(s);
+    emit_load(T1, 3, ACC, s);
+    emit_push(T1, s);
+
     e2->code(s);
+    emit_load(T2, 3, ACC, s);
     emit_pop(T1, s);
-    emit_mul(ACC, T1, ACC, s);
+    emit_mul(T1, T1, T2, s);  // result value
+
+    // 获取临时右值
+    emit_pop(ACC, s);
+    CgenClassTable::GetInstance()->DelStackVar();
+    emit_store(T1, 3, ACC, s);
 }
 
 void divide_class::code(ostream& s)
 {
     s << "\t\t\t# divide_class::code" << endl;
-    e1->code(s);
+
+    // 新建一个右值
+    emit_load_int(ACC, inttable.lookup_string("0"), s);
+    emit_jal("Object.copy", s);
     emit_push(ACC, s);
+
+    CgenClassTable::GetInstance()->AddStackVar(nullptr);
+
+    e1->code(s);
+    emit_load(T1, 3, ACC, s);
+    emit_push(T1, s);
+
     e2->code(s);
+    emit_load(T2, 3, ACC, s);
     emit_pop(T1, s);
-    emit_div(ACC, T1, ACC, s);
+    emit_div(T1, T1, T2, s);  // result value
+
+    // 获取临时右值
+    emit_pop(ACC, s);
+    CgenClassTable::GetInstance()->DelStackVar();
+    emit_store(T1, 3, ACC, s);
 }
 
 void neg_class::code(ostream& s)
@@ -1701,7 +1736,7 @@ void object_class::code(ostream& s)
 {
     s << "\t\t\t# object_class::code" << endl;
 
-    bool ok = CgenClassTable::GetInstance()->emit_Right_value_Addr(name);
+    bool ok = CgenClassTable::GetInstance()->emit_Left_value_Addr(name);
     if (!ok)
     {
         // self

@@ -31,9 +31,8 @@ public:
     CgenNodeP m_currentClass = nullptr;
     method_class* m_currentMethod = nullptr;
 
-    // 生成右值引用代码
-    bool emit_Right_Value_Ref(Symbol ValueName);
-    bool emit_Right_value_Addr(Symbol ValueName);
+    // 获取左值地址
+    bool emit_Left_value_Addr(Symbol ValueName);
 
     void AddStackVar(Symbol VarName);
     void DelStackVar();
