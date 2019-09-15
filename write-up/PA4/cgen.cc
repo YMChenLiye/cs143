@@ -1395,6 +1395,11 @@ void static_dispatch_class::code(ostream& s)
     }
     expr->code(s);
 
+    // 判断是否dispatch on void
+    int iVoidLabel = CgenClassTable::GetInstance()->GetNextLable();
+    int iNotVoidLabel = CgenClassTable::GetInstance()->GetNextLable();
+    emit_beqz(ACC, iVoidLabel, s);
+
     for (int i = actual->first(); actual->more(i); i = actual->next(i))
     {
         CgenClassTable::GetInstance()->DelStackVar();
@@ -1402,6 +1407,15 @@ void static_dispatch_class::code(ostream& s)
     s << JAL;
     emit_method_ref(type_name, name, s);
     s << endl;
+    emit_branch(iNotVoidLabel, s);
+
+    emit_label_def(iVoidLabel, s);
+    emit_load_imm(T1, line_number, s);
+    char* pFileName = CgenClassTable::GetInstance()->m_currentClass->filename->get_string();
+    emit_load_string(ACC, stringtable.lookup_string(pFileName), s);
+    emit_jal("_dispatch_abort", s);
+
+    emit_label_def(iNotVoidLabel, s);
 }
 
 void dispatch_class::code(ostream& s)
@@ -1420,12 +1434,19 @@ void dispatch_class::code(ostream& s)
     s << "# offset = " << iOffset << endl;
 
     expr->code(s);
-    emit_push(ACC, s);
-    // 2. 拿到具体函数指针(T1)
-    emit_load(ACC, 2, ACC, s);
-    emit_load(T1, iOffset, ACC, s);
 
+    // 判断是否dispatch on void
+    int iVoidLabel = CgenClassTable::GetInstance()->GetNextLable();
+    int iNotVoidLabel = CgenClassTable::GetInstance()->GetNextLable();
+    emit_beqz(ACC, iVoidLabel, s);
+
+    emit_push(ACC, s);
+    emit_load(ACC, DISPTABLE_OFFSET, ACC, s);
+    emit_load(T1, iOffset, ACC, s);
     emit_pop(ACC, s);
+
+    emit_jal(T1, s);
+    emit_branch(iNotVoidLabel, s);
 
     // 函数调用后不再维护压栈参数
     for (int i = actual->first(); actual->more(i); i = actual->next(i))
@@ -1433,7 +1454,13 @@ void dispatch_class::code(ostream& s)
         CgenClassTable::GetInstance()->DelStackVar();
     }
 
-    emit_jal(T1, s);
+    emit_label_def(iVoidLabel, s);
+    emit_load_imm(T1, line_number, s);
+    char* pFileName = CgenClassTable::GetInstance()->m_currentClass->filename->get_string();
+    emit_load_string(ACC, stringtable.lookup_string(pFileName), s);
+    emit_jal("_dispatch_abort", s);
+
+    emit_label_def(iNotVoidLabel, s);
 }
 
 void cond_class::code(ostream& s)
@@ -1465,6 +1492,7 @@ void loop_class::code(ostream& s)
     body->code(s);
     emit_branch(iBeginLabel, s);
     emit_label_def(iEndLabel, s);
+    emit_move(ACC, ZERO, s);
 }
 
 void typcase_class::code(ostream& s)
@@ -1556,6 +1584,10 @@ void let_class::code(ostream& s)
         else if (type_decl == Bool)
         {
             emit_load_bool(ACC, BoolConst(0), s);
+        }
+        else
+        {
+            emit_move(ACC, ZERO, s);
         }
     }
     else
@@ -1799,6 +1831,7 @@ void isvoid_class::code(ostream& s)
 void no_expr_class::code(ostream& s)
 {
     s << "\t\t\t# no_expr_class::code" << endl;
+    assert(false);
 }
 
 void object_class::code(ostream& s)
