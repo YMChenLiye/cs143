@@ -848,6 +848,9 @@ void CgenClassTable::code()
     // 构造classNameTable
     code_class_nameTab();
 
+    // 构造classObjTable
+    code_class_objTab();
+
     // 构造dispatchTables
     code_dispatch_tables(root());
 
@@ -1082,6 +1085,26 @@ void CgenClassTable::code_class_nameTab()
         str << WORD;
         entry->code_ref(str);
         str << endl;
+    }
+}
+
+void CgenClassTable::code_class_objTab()
+{
+    std::map<int, std::string> mapTag2ClassName;
+    for (const auto& iter : m_mapClassTag)
+    {
+        mapTag2ClassName[iter.second] = iter.first;
+    }
+
+    str << CLASSOBJTAB << LABEL;
+
+    for (const auto& iter : mapTag2ClassName)
+    {
+        std::string className = iter.second;
+        str << WORD;
+        str << className + std::string(PROTOBJ_SUFFIX) << endl;
+        str << WORD;
+        str << className + std::string(CLASSINIT_SUFFIX) << endl;
     }
 }
 
@@ -1830,15 +1853,38 @@ void bool_const_class::code(ostream& s)
 void new__class::code(ostream& s)
 {
     s << "\t\t\t# new__class::code" << endl;
-    // 不用保存FP,因为被调方没有恢复fp的操作
-    std::string sAddr = std::string(type_name->get_string()) + std::string(PROTOBJ_SUFFIX);
-    emit_load_address(ACC, (char*)sAddr.c_str(), s);
-    // 调用Object.copy后再调用对用的init方法
-    emit_jal("Object.copy", s);
-    // emit_push(ACC, s);
-    sAddr = std::string(type_name->get_string()) + std::string(CLASSINIT_SUFFIX);
-    emit_jal((char*)sAddr.c_str(), s);
-    // emit_pop(ACC, s);
+
+    if (type_name == SELF_TYPE)
+    {
+        // 运行时根据实际对象调用
+        // 根据classTag找对对应类的protObj && init
+
+        emit_load(T1, TAG_OFFSET, SELF, s);
+        emit_load_imm(T2, 2 * WORD_SIZE, s);
+        emit_mul(T1, T1, T2, s);  // T1 = protObj offset(Tag * 2 * 4)
+        emit_load_imm(T2, 4, s);
+        emit_add(T2, T1, T2, s);  // T2 = init offset(Tag * 2 * 4 + 4)
+        emit_load_address(ACC, "class_objTab", s);
+
+        emit_add(T1, ACC, T1, s);
+        emit_add(T2, ACC, T2, s);
+        emit_load(T1, 0, T1, s);  // T1 = protObj Addr
+        emit_load(T2, 0, T2, s);  // T2 = init Addr
+
+        emit_move(ACC, T1, s);
+        emit_jal("Object.copy", s);
+        emit_jalr(T2, s);
+    }
+    else
+    {
+        std::string sAddr = std::string(type_name->get_string()) + std::string(PROTOBJ_SUFFIX);
+        emit_load_address(ACC, (char*)sAddr.c_str(), s);
+        // 调用Object.copy后再调用对用的init方法
+        emit_jal("Object.copy", s);
+        // emit_push(ACC, s);
+        sAddr = std::string(type_name->get_string()) + std::string(CLASSINIT_SUFFIX);
+        emit_jal((char*)sAddr.c_str(), s);
+    }
 }
 
 void isvoid_class::code(ostream& s)

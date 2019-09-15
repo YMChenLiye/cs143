@@ -67,6 +67,8 @@ private:
 
     // 生成class_nameTab
     void code_class_nameTab();
+    // 生成class_protTab
+    void code_class_objTab();
 
     // 构造dispatchTables
     void code_dispatch_tables(CgenNodeP node);
