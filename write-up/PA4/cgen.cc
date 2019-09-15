@@ -891,7 +891,7 @@ void CgenClassTable::code_prototype_object(CgenNodeP node)
     {
         if (vecAttr[i]->type_decl == Bool)
         {
-            str << WORD << BoolConst(0).code_str() << endl;
+            str << WORD << falsebool.code_str() << endl;
         }
         else if (vecAttr[i]->type_decl == Int)
         {
@@ -1113,9 +1113,6 @@ void CgenClassTable::code_object_initializer(CgenNodeP node)
 
     // 自身逻辑
 
-    // 保存self
-    emit_move(SELF, ACC, str);
-
     // 1. 调用父类构造函数
     if (node->name != Object)
     {
@@ -1137,8 +1134,6 @@ void CgenClassTable::code_object_initializer(CgenNodeP node)
             emit_store(ACC, DEFAULT_OBJFIELDS + uFirstAttrIndex + i, SELF, str);
         }
     }
-
-    // 恢复self
     emit_move(ACC, SELF, str);
 
     emit_callee_end(0);
@@ -1161,6 +1156,9 @@ void CgenClassTable::emit_callee_begin()
     // 保存self
     emit_push(SELF, str);
 
+    // 设置self
+    emit_move(SELF, ACC, str);
+
     // push $ra
     emit_push(RA, str);
 }
@@ -1169,6 +1167,9 @@ void CgenClassTable::emit_callee_end(int iNum)
 {
     // pop $ra
     emit_pop(RA, str);
+
+    // 设置ACC
+    // emit_move(ACC, SELF, str);
 
     // 恢复self
     emit_pop(SELF, str);
@@ -1291,6 +1292,12 @@ int CgenClassTable::GetAttrOffset(Symbol ObjName)
 
 int CgenClassTable::GetParamOffset(Symbol ParamName)
 {
+    // 在处理init构造函数
+    if (!m_currentMethod)
+    {
+        return 0;
+    }
+
     std::vector<formal_class*> vecParam;
     Formals formals = m_currentMethod->formals;
     for (int i = formals->first(); formals->more(i); i = formals->next(i))
@@ -1470,7 +1477,7 @@ void cond_class::code(ostream& s)
     int iTrueLable = CgenClassTable::GetInstance()->GetNextLable();
     int iFalseLable = CgenClassTable::GetInstance()->GetNextLable();
     int iEndLable = CgenClassTable::GetInstance()->GetNextLable();
-    emit_load_address(T1, (char*)BoolConst(0).code_str().c_str(), s);
+    emit_load_bool(T1, falsebool, s);
     emit_bne(ACC, T1, iTrueLable, s);
     emit_label_def(iFalseLable, s);
     else_exp->code(s);
@@ -1487,7 +1494,7 @@ void loop_class::code(ostream& s)
     int iEndLabel = CgenClassTable::GetInstance()->GetNextLable();
     emit_label_def(iBeginLabel, s);
     pred->code(s);
-    emit_load_bool(T1, BoolConst(0), s);
+    emit_load_bool(T1, falsebool, s);
     emit_beq(ACC, T1, iEndLabel, s);
     body->code(s);
     emit_branch(iBeginLabel, s);
@@ -1583,7 +1590,7 @@ void let_class::code(ostream& s)
         }
         else if (type_decl == Bool)
         {
-            emit_load_bool(ACC, BoolConst(0), s);
+            emit_load_bool(ACC, falsebool, s);
         }
         else
         {
@@ -1714,10 +1721,10 @@ void lt_class::code(ostream& s)
     int iEndLable = CgenClassTable::GetInstance()->GetNextLable();
     emit_blt(T1, T2, iTrueLable, s);
     emit_label_def(iFalseLable, s);
-    emit_load_bool(ACC, BoolConst(0), s);  // false: ACC = 0
+    emit_load_bool(ACC, falsebool, s);  // false: ACC = 0
     emit_branch(iEndLable, s);
     emit_label_def(iTrueLable, s);
-    emit_load_bool(ACC, BoolConst(1), s);  // true: ACC = 1
+    emit_load_bool(ACC, truebool, s);  // true: ACC = 1
     emit_label_def(iEndLable, s);
 }
 
@@ -1730,21 +1737,21 @@ void eq_class::code(ostream& s)
     e2->code(s);
     emit_move(T2, ACC, s);
     emit_pop(T1, s);
-    emit_load_bool(ACC, BoolConst(1), s);
-    emit_load_bool(A1, BoolConst(0), s);
+    emit_load_bool(ACC, truebool, s);
+    emit_load_bool(A1, falsebool, s);
     emit_jal("equality_test", s);
     // 如果相等,A0 = true, 否则A0 = false
 
     int iTrueLable = CgenClassTable::GetInstance()->GetNextLable();
     int iFalseLable = CgenClassTable::GetInstance()->GetNextLable();
     int iEndLable = CgenClassTable::GetInstance()->GetNextLable();
-    emit_load_bool(T1, BoolConst(1), s);
+    emit_load_bool(T1, truebool, s);
     emit_beq(T1, ACC, iTrueLable, s);
     emit_label_def(iFalseLable, s);
-    emit_load_bool(ACC, BoolConst(0), s);  // false: ACC = 0
+    emit_load_bool(ACC, falsebool, s);  // false: ACC = 0
     emit_branch(iEndLable, s);
     emit_label_def(iTrueLable, s);
-    emit_load_bool(ACC, BoolConst(1), s);  // true: ACC = 1
+    emit_load_bool(ACC, truebool, s);  // true: ACC = 1
     emit_label_def(iEndLable, s);
 }
 
@@ -1761,10 +1768,10 @@ void leq_class::code(ostream& s)
     int iEndLable = CgenClassTable::GetInstance()->GetNextLable();
     emit_bleq(T1, ACC, iTrueLable, s);
     emit_label_def(iFalseLable, s);
-    emit_load_bool(ACC, BoolConst(0), s);  // false: ACC = 0
+    emit_load_bool(ACC, falsebool, s);  // false: ACC = 0
     emit_branch(iEndLable, s);
     emit_label_def(iTrueLable, s);
-    emit_load_bool(ACC, BoolConst(1), s);  // true: ACC = 1
+    emit_load_bool(ACC, truebool, s);  // true: ACC = 1
     emit_label_def(iEndLable, s);
 }
 
@@ -1781,10 +1788,10 @@ void comp_class::code(ostream& s)
     emit_beqz(T1, iTrueLable, s);
 
     emit_label_def(iFalseLable, s);
-    emit_load_bool(ACC, BoolConst(0), s);  // false: ACC = 0
+    emit_load_bool(ACC, falsebool, s);  // false: ACC = 0
     emit_branch(iEndLable, s);
     emit_label_def(iTrueLable, s);
-    emit_load_bool(ACC, BoolConst(1), s);  // true: ACC = 1
+    emit_load_bool(ACC, truebool, s);  // true: ACC = 1
     emit_label_def(iEndLable, s);
 }
 
@@ -1817,15 +1824,31 @@ void new__class::code(ostream& s)
     emit_load_address(ACC, (char*)sAddr.c_str(), s);
     // 调用Object.copy后再调用对用的init方法
     emit_jal("Object.copy", s);
-    emit_push(ACC, s);
+    // emit_push(ACC, s);
     sAddr = std::string(type_name->get_string()) + std::string(CLASSINIT_SUFFIX);
     emit_jal((char*)sAddr.c_str(), s);
-    emit_pop(ACC, s);
+    // emit_pop(ACC, s);
 }
 
 void isvoid_class::code(ostream& s)
 {
     s << "\t\t\t# isvoid_class::code" << endl;
+    e1->code(s);
+
+    int iVoidLable = CgenClassTable::GetInstance()->GetNextLable();
+    int iNotVoidLable = CgenClassTable::GetInstance()->GetNextLable();
+    int iEndLable = CgenClassTable::GetInstance()->GetNextLable();
+
+    emit_beqz(ACC, iVoidLable, s);
+
+    emit_label_def(iNotVoidLable, s);
+    emit_load_bool(ACC, falsebool, s);
+    emit_branch(iEndLable, s);
+
+    emit_label_def(iVoidLable, s);
+    emit_load_bool(ACC, truebool, s);
+
+    emit_label_def(iEndLable, s);
 }
 
 void no_expr_class::code(ostream& s)

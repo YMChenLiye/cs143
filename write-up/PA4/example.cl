@@ -3,13 +3,31 @@
     as possible.
  *)
 
-class Main inherits IO {
-  i:Int;
-  main():Object { let x:Int <- 0 in {
-    while x < 100 loop {
-      x <- x + 1;
-    } pool;
-    out_int(x);
-  } };
+class Base inherits IO
+{
+  identify() : Object
+  {
+    out_string( "base\n" )
+  };
+
+  duplicate() : Base
+  {
+    copy()
+  };
 };
 
+
+class Derived inherits Base
+{
+  identify() : Object
+  {
+    out_string( "derived\n" )
+  };
+};
+
+class Main inherits IO {
+  i:Int;
+  main():Object { 
+    (new Derived).duplicate().identify()
+};
+};
