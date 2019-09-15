@@ -3,31 +3,26 @@
     as possible.
  *)
 
-class Base inherits IO
-{
-  identify() : Object
-  {
-    out_string( "base\n" )
-  };
-
-  duplicate() : Base
-  {
-    copy()
-  };
+class A {
+        x:Int <- 5;
+        foo(y:Int):SELF_TYPE { { x <- y; self; } };
+};
+class B inherits A {
 };
 
-
-class Derived inherits Base
-{
-  identify() : Object
-  {
-    out_string( "derived\n" )
-  };
-};
 
 class Main inherits IO {
-  i:Int;
+
+  mul(x:Int, y:Int):Int{
+    x*y
+  };
+  div(x:Int, y:Int):Int{
+    x/y
+  };
   main():Object { 
-    (new Derived).duplicate().identify()
+    {
+
+    out_int(mul(1,2));
+    }
 };
 };

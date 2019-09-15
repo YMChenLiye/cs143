@@ -39,6 +39,8 @@ public:
 
     int GetClassTag(Symbol type_decl);
 
+    std::string GetRealFunName(Symbol type_name, Symbol name);
+
 private:
     List<CgenNode>* nds;
     ostream& str;

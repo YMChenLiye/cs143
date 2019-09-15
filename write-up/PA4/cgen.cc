@@ -1382,6 +1382,23 @@ int CgenClassTable::GetClassTag(Symbol type_decl)
     assert(iter != m_mapClassTag.end());
     return iter->second;
 }
+
+std::string CgenClassTable::GetRealFunName(Symbol type_name, Symbol name)
+{
+    CgenNodeP pNode = lookup(type_name);
+    assert(pNode);
+    std::vector<std::pair<std::string, method_class*>> vecMethod = get_all_method(pNode);
+    for (const auto& method : vecMethod)
+    {
+        if (method.second->name == name)
+        {
+            return method.first + METHOD_SEP + std::string(name->get_string());
+        }
+    }
+
+    assert(false);
+    return "not find";
+}
 ///////////////////////////////////////////////////////////////////////
 //
 // CgenNode methods
@@ -1435,9 +1452,9 @@ void static_dispatch_class::code(ostream& s)
     {
         CgenClassTable::GetInstance()->DelStackVar();
     }
-    s << JAL;
-    emit_method_ref(type_name, name, s);
-    s << endl;
+    // static dispatch 也有可能需要调用父类的函数
+    std::string sRealFunName = CgenClassTable::GetInstance()->GetRealFunName(type_name, name);
+    s << JAL << sRealFunName << endl;
     emit_branch(iNotVoidLabel, s);
 
     emit_label_def(iVoidLabel, s);
@@ -1771,22 +1788,23 @@ void eq_class::code(ostream& s)
     e2->code(s);
     emit_move(T2, ACC, s);
     emit_pop(T1, s);
+
+    // 指针相等必然相等
+    int iSameLabel = CgenClassTable::GetInstance()->GetNextLable();
+    int iEndLabel = CgenClassTable::GetInstance()->GetNextLable();
+    emit_beq(T1, T2, iSameLabel, s);
+
+    // 不等时再调用库函数比较
     emit_load_bool(ACC, truebool, s);
     emit_load_bool(A1, falsebool, s);
     emit_jal("equality_test", s);
     // 如果相等,A0 = true, 否则A0 = false
+    emit_branch(iEndLabel, s);
 
-    int iTrueLable = CgenClassTable::GetInstance()->GetNextLable();
-    int iFalseLable = CgenClassTable::GetInstance()->GetNextLable();
-    int iEndLable = CgenClassTable::GetInstance()->GetNextLable();
-    emit_load_bool(T1, truebool, s);
-    emit_beq(T1, ACC, iTrueLable, s);
-    emit_label_def(iFalseLable, s);
-    emit_load_bool(ACC, falsebool, s);  // false: ACC = 0
-    emit_branch(iEndLable, s);
-    emit_label_def(iTrueLable, s);
-    emit_load_bool(ACC, truebool, s);  // true: ACC = 1
-    emit_label_def(iEndLable, s);
+    emit_label_def(iSameLabel, s);
+    emit_load_bool(ACC, truebool, s);
+
+    emit_label_def(iEndLabel, s);
 }
 
 void leq_class::code(ostream& s)
