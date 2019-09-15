@@ -1704,8 +1704,18 @@ void divide_class::code(ostream& s)
 void neg_class::code(ostream& s)
 {
     s << "\t\t\t# neg_class::code" << endl;
+    // 新建一个右值
+    emit_load_int(ACC, inttable.lookup_string("0"), s);
+    emit_jal("Object.copy", s);
+    emit_push(ACC, s);
+
     e1->code(s);
-    emit_neg(ACC, ACC, s);
+    emit_load(T1, DEFAULT_OBJFIELDS, ACC, s);
+    emit_neg(T1, T1, s);
+
+    // 获取临时右值
+    emit_pop(ACC, s);
+    emit_store(T1, DEFAULT_OBJFIELDS, ACC, s);
 }
 
 void lt_class::code(ostream& s)
