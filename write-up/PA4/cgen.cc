@@ -1106,6 +1106,7 @@ void CgenClassTable::code_dispatch_tables(CgenNodeP node)
 
 void CgenClassTable::code_object_initializer(CgenNodeP node)
 {
+    m_currentClass = node;
     emit_init_ref(node->name, str);
     str << LABEL;
 
