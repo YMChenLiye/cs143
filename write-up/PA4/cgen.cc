@@ -1246,11 +1246,11 @@ int CgenClassTable::GetDispatchOffset(Symbol Class, Symbol function)
 
 bool CgenClassTable::emit_Left_value_Addr(Symbol ValueName)
 {
-    // 在成员变量中查找
-    int iAttrOffset = GetAttrOffset(ValueName);
-    if (iAttrOffset > 0)
+    // 在栈变量中查找
+    int iVarOffset = GetVarOffset(ValueName);
+    if (iVarOffset > 0)
     {
-        emit_addiu(T1, SELF, (iAttrOffset + DEFAULT_OBJFIELDS - 1) * WORD_SIZE, str);
+        emit_addiu(T1, SP, iVarOffset * WORD_SIZE, str);
         return true;
     }
 
@@ -1262,11 +1262,11 @@ bool CgenClassTable::emit_Left_value_Addr(Symbol ValueName)
         return true;
     }
 
-    // 在栈变量中查找
-    int iVarOffset = GetVarOffset(ValueName);
-    if (iVarOffset > 0)
+    // 在成员变量中查找
+    int iAttrOffset = GetAttrOffset(ValueName);
+    if (iAttrOffset > 0)
     {
-        emit_addiu(T1, SP, iVarOffset * WORD_SIZE, str);
+        emit_addiu(T1, SELF, (iAttrOffset + DEFAULT_OBJFIELDS - 1) * WORD_SIZE, str);
         return true;
     }
 
