@@ -12,17 +12,9 @@ class B inherits A {
 
 
 class Main inherits IO {
-
-  mul(x:Int, y:Int):Int{
-    x*y
-  };
-  div(x:Int, y:Int):Int{
-    x/y
-  };
   main():Object { 
-    {
-
-    out_int(mul(1,2));
-    }
+    let x:B <- new B in {
+                         if x = x then 0 else abort() fi;
+                }
 };
 };

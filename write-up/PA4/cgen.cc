@@ -1646,8 +1646,9 @@ void let_class::code(ostream& s)
     emit_push(ACC, s, identifier);
 
     body->code(s);
-
+    emit_move(T1, ACC, s);
     emit_pop(ACC, s);
+    emit_move(ACC, T1, s);
 }
 
 void plus_class::code(ostream& s)
@@ -1767,6 +1768,8 @@ void lt_class::code(ostream& s)
     e2->code(s);
     emit_load(T2, DEFAULT_OBJFIELDS, ACC, s);
     emit_pop(T1, s);
+    // 此时T1 T2分别等于两个Int值
+
     int iTrueLable = CgenClassTable::GetInstance()->GetNextLable();
     int iFalseLable = CgenClassTable::GetInstance()->GetNextLable();
     int iEndLable = CgenClassTable::GetInstance()->GetNextLable();
@@ -1812,13 +1815,17 @@ void leq_class::code(ostream& s)
     s << "\t\t\t# leq_class::code" << endl;
 
     e1->code(s);
-    emit_push(ACC, s);
+    emit_load(T1, DEFAULT_OBJFIELDS, ACC, s);
+    emit_push(T1, s);
     e2->code(s);
+    emit_load(T2, DEFAULT_OBJFIELDS, ACC, s);
     emit_pop(T1, s);
+    // 此时T1 T2分别等于两个Int值
+
     int iTrueLable = CgenClassTable::GetInstance()->GetNextLable();
     int iFalseLable = CgenClassTable::GetInstance()->GetNextLable();
     int iEndLable = CgenClassTable::GetInstance()->GetNextLable();
-    emit_bleq(T1, ACC, iTrueLable, s);
+    emit_bleq(T1, T2, iTrueLable, s);
     emit_label_def(iFalseLable, s);
     emit_load_bool(ACC, falsebool, s);  // false: ACC = 0
     emit_branch(iEndLable, s);
