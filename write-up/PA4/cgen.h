@@ -38,6 +38,7 @@ public:
     void DelStackVar();
 
     int GetClassTag(Symbol type_decl);
+    std::vector<int> GetAllClassTag(Symbol type_decl);
 
     std::string GetRealFunName(Symbol type_name, Symbol name);
 

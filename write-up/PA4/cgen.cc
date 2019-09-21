@@ -1383,6 +1383,28 @@ int CgenClassTable::GetClassTag(Symbol type_decl)
     return iter->second;
 }
 
+std::vector<int> CgenClassTable::GetAllClassTag(Symbol type_decl)
+{
+    CgenNodeP pNode = lookup(type_decl);
+    assert(pNode);
+
+    std::vector<int> vecResult;
+    auto iter = m_mapClassTag.find(std::string(type_decl->get_string()));
+    assert(iter != m_mapClassTag.end());
+    vecResult.push_back(iter->second);
+
+    List<CgenNode>* children = pNode->get_children();
+    for (auto iter = children; iter; iter = iter->tl())
+    {
+        std::vector<int> vecTmp = GetAllClassTag(iter->hd()->get_name());
+        for (auto tag : vecTmp)
+        {
+            vecResult.push_back(tag);
+        }
+    }
+    return vecResult;
+}
+
 std::string CgenClassTable::GetRealFunName(Symbol type_name, Symbol name)
 {
     CgenNodeP pNode = lookup(type_name);
@@ -1568,12 +1590,37 @@ void typcase_class::code(ostream& s)
     int iVoidLabel = CgenClassTable::GetInstance()->GetNextLable();
     emit_beqz(ACC, iVoidLabel, s);
     emit_load(T1, TAG_OFFSET, ACC, s);  // Get Class Tag
+
     for (size_t i = 0; i < vecBranch.size(); ++i)
     {
         int iLabel = vecLabel[i];
         branch_class* pBranch = vecBranch[i];
+
+        // 精准匹配
         emit_load_imm(T2, CgenClassTable::GetInstance()->GetClassTag(pBranch->type_decl), s);
         emit_beq(T1, T2, iLabel, s);
+    }
+
+    // 匹配子类
+    for (size_t i = 0; i < vecBranch.size(); ++i)
+    {
+        int iLabel = vecLabel[i];
+        branch_class* pBranch = vecBranch[i];
+        std::vector<int> vecAllTag = CgenClassTable::GetInstance()->GetAllClassTag(pBranch->type_decl);
+        int iSelfTag = CgenClassTable::GetInstance()->GetClassTag(pBranch->type_decl);
+        std::vector<int> vecNoSelf;
+        for (auto tag : vecAllTag)
+        {
+            if (tag != iSelfTag)
+            {
+                vecNoSelf.push_back(tag);
+            }
+        }
+        for (auto tag : vecNoSelf)
+        {
+            emit_load_imm(T2, tag, s);
+            emit_beq(T1, T2, iLabel, s);
+        }
     }
 
     // 没找到对应的class
