@@ -1597,8 +1597,8 @@ void typcase_class::code(ostream& s)
 
         pBranch->expr->code(s);
 
-        // 析构栈上变量
-        emit_pop(ACC, s);
+        // 析构栈上变量(临时变量其实并不关心,pop到哪里都可以)
+        emit_pop(T1, s);
 
         // 跳出
         emit_branch(iEndLabel, s);
